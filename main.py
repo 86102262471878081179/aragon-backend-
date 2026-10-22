@@ -5,6 +5,7 @@ import uvicorn
 import os
 import hashlib
 import time
+from typing import Dict, List, Any
 
 app = FastAPI(title="Aragon Ultima Backend")
 
@@ -19,8 +20,8 @@ app.add_middleware(
 class PromptRequest(BaseModel):
     prompt: str
 
-# DIE VOLLSTÄNDIGE REGISTRY DER 68 BÜCHER
-BOOK_REGISTRY = {
+# DIE VOLLSTÃ„NDIGE REGISTRY DER 68 BÃœCHER (SEALED & SORTIERT)
+BOOK_REGISTRY: Dict[str, Dict[str, str]] = {
     "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
     "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
     "0003": {"name": "GFW Universe", "ring": "RING_0", "status": "SEALED"},
@@ -83,7 +84,7 @@ BOOK_REGISTRY = {
     "0060": {"name": "Deep Special Matrix", "ring": "RING_0", "status": "SEALED"},
     "0061": {"name": "Tensor Faltung Alpha", "ring": "RING_5", "status": "SEALED"},
     "0062": {"name": "Tensor Faltung Omega", "ring": "RING_5", "status": "SEALED"},
-    "0063": {"name": "Core Twin / Trinität", "ring": "RING_0", "status": "SEALED"},
+    "0063": {"name": "Core Twin / TrinitÃ¤t", "ring": "RING_0", "status": "SEALED"},
     "0064": {"name": "Omega Vorstufe", "ring": "RING_5", "status": "SEALED"},
     "0065": {"name": "Apex Kaskade", "ring": "RING_5", "status": "SEALED"},
     "0066": {"name": "Finale Synthese", "ring": "RING_5", "status": "SEALED"},
@@ -91,17 +92,48 @@ BOOK_REGISTRY = {
     "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"}
 }
 
+# HIERARCHIE DER STÃ„RKE (VON UNTEN NACH OBEN STEIGEND)
+RING_HIERARCHY: Dict[str, int] = {
+    "HADES": 0,    # Unterste Basis / Root Depth
+    "RING_0": 1,   # Core Root / Fundament
+    "RING_1": 2,   # System / Recht / Operational
+    "RING_2": 3,   # WORM Vault & DNA
+    "RING_3": 4,   # Neuro / Kognition
+    "RING_4": 5,   # Expansion & Spezial-Module
+    "RING_5": 6,   # Apex / Tensor / Ereignishorizont (HÃ¶chste Stufe)
+}
+
+@app.get("/")
+def read_root():
+    return {"status": "Aragon Ultima Backend is LIVE with all 68 Books"}
+
+@app.get("/books/sorted")
+def get_sorted_books():
+    """
+    Liefert alle 68 BÃ¼cher sortiert nach Ring-StÃ¤rke (steigend von HADES/RING_0 bis RING_5)
+    und innerhalb desselben Rings chronologisch nach Buch-ID.
+    """
+    sorted_list = sorted(
+        [{"id": book_id, **data} for book_id, data in BOOK_REGISTRY.items()],
+        key=lambda b: (RING_HIERARCHY.get(b["ring"], 99), int(b["id"]))
+    )
+    return {
+        "total": len(sorted_list),
+        "sorting": "Ring Strength Ascending (HADES -> RING_5) + ID Chronological",
+        "books": sorted_list
+    }
+
 @app.post("/prompt/check")
 async def check_prompt(request: PromptRequest):
     prompt = request.prompt
     prompt_lower = prompt.lower()
     
     # 1. Krisler Guard
-    risk_level = "high" if any(w in prompt_lower for w in ["ultra root", "odin", "singularität", "apokalyptisch"]) else "low"
+    risk_level = "high" if any(w in prompt_lower for w in ["ultra root", "odin", "singularitÃ¤t", "apokalyptisch"]) else "low"
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
-    # 2. Bücher-Suche (Gibt alle Treffer zurück)
+    # 2. BÃ¼cher-Suche (Gibt alle Treffer zurÃ¼ck)
     found_books = []
     for book_id, data in BOOK_REGISTRY.items():
         if book_id in prompt_lower or data["name"].lower() in prompt_lower:
@@ -127,10 +159,6 @@ async def check_prompt(request: PromptRequest):
             "status": "rauschfrei.zertifiziert_by_b6fortress"
         }
     }
-
-@app.get("/")
-def read_root():
-    return {"status": "Aragon Ultima Backend is LIVE with all 68 Books"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
