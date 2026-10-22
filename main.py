@@ -86,7 +86,7 @@ BOOK_REGISTRY = {
     "0063": {"name": "Core Twin / Trinität", "ring": "RING_0", "status": "SEALED"},
     "0064": {"name": "Omega Vorstufe", "ring": "RING_5", "status": "SEALED"},
     "0065": {"name": "Apex Kaskade", "ring": "RING_5", "status": "SEALED"},
-    "0066": {"name": "Finale Synthese", "ring": "RING_5",status "": "SEALED"},
+    "0066": {"name": "Finale Synthese", "ring": "RING_5", "status": "SEALED"},
     "0067": {"name": "Ereignishorizont", "ring": "RING_5", "status": "SEALED"},
     "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"}
 }
@@ -104,15 +104,12 @@ async def check_prompt(request: PromptRequest):
     # 2. Bücher-Suche (Gibt alle Treffer zurück)
     found_books = []
     for book_id, data in BOOK_REGISTRY.items():
-        # Suche nach ID (z.B. "0001" oder "1") oder Titel
         if book_id in prompt_lower or data["name"].lower() in prompt_lower:
             found_books.append({"id": book_id, **data})
             
     # 3. WORM Hash & Seal
     timestamp = str(time.time())
-    rawrompt_data') = f"{prompt}{timestamp}{risk_level}")
-}".encode            
-('utf           -8 #')
+    raw_data = f"{prompt}{timestamp}{risk_level}".encode('utf-8')
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
     master_seal = "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab"
     
