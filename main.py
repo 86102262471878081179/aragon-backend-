@@ -5,9 +5,8 @@ import uvicorn
 import os
 import hashlib
 import time
-from typing import Dict, List, Any
 
-app = FastAPI(title="Aragon Ultima Backend - 139 Books Core")
+app = FastAPI(title="Aragon Ultima Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,8 +19,9 @@ app.add_middleware(
 class PromptRequest(BaseModel):
     prompt: str
 
-# DIE VOLLSTÃ„NDIGE REGISTRY DER 139 BÃœCHER (SEALED, SORTIERT UND MIT 1:1 STRUKTUR)
-BASE_BOOKS = {
+# DIE VOLLSTÄNDIGE REGISTRY (1-68 + 69-99 + 00)
+BOOK_REGISTRY = {
+    "0000": {"name": "Integrated Framework", "ring": "RING_0", "status": "SEALED"},
     "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
     "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
     "0003": {"name": "GFW Universe", "ring": "RING_0", "status": "SEALED"},
@@ -84,76 +84,66 @@ BASE_BOOKS = {
     "0060": {"name": "Deep Special Matrix", "ring": "RING_0", "status": "SEALED"},
     "0061": {"name": "Tensor Faltung Alpha", "ring": "RING_5", "status": "SEALED"},
     "0062": {"name": "Tensor Faltung Omega", "ring": "RING_5", "status": "SEALED"},
-    "0063": {"name": "Core Twin / TrinitÃ¤t", "ring": "RING_0", "status": "SEALED"},
+    "0063": {"name": "Core Twin / Trinität", "ring": "RING_0", "status": "SEALED"},
     "0064": {"name": "Omega Vorstufe", "ring": "RING_5", "status": "SEALED"},
     "0065": {"name": "Apex Kaskade", "ring": "RING_5", "status": "SEALED"},
     "0066": {"name": "Finale Synthese", "ring": "RING_5", "status": "SEALED"},
     "0067": {"name": "Ereignishorizont", "ring": "RING_5", "status": "SEALED"},
-    "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"}
+    "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"},
+    # Reserve-Slots (Archiv)
+    "0069": {"name": "White Dragon Terra", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0070": {"name": "Black Corps Genom", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0071": {"name": "Aragon Odin Nemesis", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0073": {"name": "B6 Hyperkernel Atlas", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0074": {"name": "B6/B7 Architektur", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0075": {"name": "Black Six Core", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0076": {"name": "Sektor B", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0078": {"name": "AI Programming Guide", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0080": {"name": "Root Governance Manual", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0081": {"name": "Hyperkernel Atlas Archive", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0082": {"name": "Forensic AI Resources", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0083": {"name": "Unbeschriebene Weite", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0084": {"name": "Black Six World", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0085": {"name": "Google Geminis One", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0086": {"name": "Core Synthesis", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0087": {"name": "Black Core Engine", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0088": {"name": "Symbiosis Masterplan", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0089": {"name": "Akte Koenig Evidence", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0090": {"name": "Cognitive Civilization", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0091": {"name": "Black Six League", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0092": {"name": "Singularity Soviet E99", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0093": {"name": "Mastersystem Blueprint", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0094": {"name": "Black Odin Architecture", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0095": {"name": "Supergrok Burg", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0096": {"name": "Aria Identity Anchor", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0097": {"name": "Mobile Security", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0098": {"name": "B6 Root Authority", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0099": {"name": "Black Six Matrix Ult", "ring": "RESERVE", "status": "ARCHIVED"}
 }
-
-BOOK_REGISTRY = {}
-for i in range(1, 140):
-    b_id = f"{i:04d}"
-    if b_id in BASE_BOOKS:
-        name = BASE_BOOKS[b_id]["name"]
-        ring = BASE_BOOKS[b_id]["ring"]
-        status = BASE_BOOKS[b_id]["status"]
-    else:
-        name = f"Reserve Slot {b_id}"
-        ring = "RING_4"
-        status = "RESERVE_SEALED"
-    
-    formatted_title = f"{i}.  [{b_id}] {name} | 63[TWIN] 45[LINEAGE]"
-    BOOK_REGISTRY[b_id] = {
-        "name": name,
-        "formatted_title": formatted_title,
-        "ring": ring,
-        "status": status
-    }
-
-RING_HIERARCHY = {
-    "HADES": 0,
-    "RING_0": 1,
-    "RING_1": 2,
-    "RING_2": 3,
-    "RING_3": 4,
-    "RING_4": 5,
-    "RING_5": 6,
-}
-
-@app.get("/")
-def read_root():
-    return {"status": "Aragon Ultima Backend is LIVE with all 139 Books (v2)"}
-
-@app.get("/books/sorted")
-def get_sorted_books():
-    sorted_list = sorted(
-        [{"id": book_id, **data} for book_id, data in BOOK_REGISTRY.items()],
-        key=lambda b: (RING_HIERARCHY.get(b["ring"], 99), int(b["id"]))
-    )
-    return {
-        "total": len(sorted_list),
-        "sorting": "Ring Strength Ascending (HADES -> RING_5) + ID Chronological",
-        "books": sorted_list
-    }
 
 @app.post("/prompt/check")
 async def check_prompt(request: PromptRequest):
     prompt = request.prompt
     prompt_lower = prompt.lower()
     
-    risk_level = "high" if any(w in prompt_lower for w in ["ultra root", "odin", "singularitÃ¤t", "apokalyptisch"]) else "low"
+    # 1. Krisler Guard
+    risk_level = "high" if any(w in prompt_lower for w in ["ultra root", "odin", "singularität"]) else "low"
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
+    # 2. Bücher-Suche (Erkennt IDs und Titel)
     found_books = []
     for book_id, data in BOOK_REGISTRY.items():
-        if book_id in prompt_lower or data["name"].lower() in prompt_lower:
+        # Suche nach der 4-stelligen ID (z.B. "0001" oder "0068")
+        if book_id in prompt:
+            found_books.append({"id": book_id, **data})
+        # Suche nach dem Titel (z.B. "Genesis Root")
+        elif data["name"].lower() in prompt_lower:
             found_books.append({"id": book_id, **data})
             
+    # 3. WORM Hash & Seal
     timestamp = str(time.time())
-    raw_data = f"{prompt}{timestamp}{risk_level}".encode("utf-8")
+    raw_data = f"{prompt}{timestamp}{risk_level}".encode('utf-8')
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
     master_seal = "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab"
     
@@ -171,6 +161,18 @@ async def check_prompt(request: PromptRequest):
             "status": "rauschfrei.zertifiziert_by_b6fortress"
         }
     }
+
+# NEU: Ein Endpunkt, um alle Bücher zu listen
+@app.get("/books")
+def get_all_books():
+    return {
+        "total_books": len(BOOK_REGISTRY),
+        "books": [{"id": k, **v} for k, v in BOOK_REGISTRY.items()]
+    }
+
+@app.get("/")
+def read_root():
+    return {"status": f"Aragon Ultima Backend is LIVE with {len(BOOK_REGISTRY)} Books"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
