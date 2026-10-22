@@ -7,7 +7,7 @@ import hashlib
 import time
 from typing import Dict, List, Any
 
-app = FastAPI(title="Aragon Ultima Backend")
+app = FastAPI(title="Aragon Ultima Backend - 139 Books Core")
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,8 +20,8 @@ app.add_middleware(
 class PromptRequest(BaseModel):
     prompt: str
 
-# DIE VOLLSTÃ„NDIGE REGISTRY DER 68 BÃœCHER (SEALED & SORTIERT)
-BOOK_REGISTRY: Dict[str, Dict[str, str]] = {
+# DIE VOLLSTÃ„NDIGE REGISTRY DER 139 BÃœCHER (SEALED, SORTIERT UND MIT 1:1 STRUKTUR)
+BASE_BOOKS = {
     "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
     "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
     "0003": {"name": "GFW Universe", "ring": "RING_0", "status": "SEALED"},
@@ -92,27 +92,42 @@ BOOK_REGISTRY: Dict[str, Dict[str, str]] = {
     "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"}
 }
 
-# HIERARCHIE DER STÃ„RKE (VON UNTEN NACH OBEN STEIGEND)
-RING_HIERARCHY: Dict[str, int] = {
-    "HADES": 0,    # Unterste Basis / Root Depth
-    "RING_0": 1,   # Core Root / Fundament
-    "RING_1": 2,   # System / Recht / Operational
-    "RING_2": 3,   # WORM Vault & DNA
-    "RING_3": 4,   # Neuro / Kognition
-    "RING_4": 5,   # Expansion & Spezial-Module
-    "RING_5": 6,   # Apex / Tensor / Ereignishorizont (HÃ¶chste Stufe)
+BOOK_REGISTRY = {}
+for i in range(1, 140):
+    b_id = f"{i:04d}"
+    if b_id in BASE_BOOKS:
+        name = BASE_BOOKS[b_id]["name"]
+        ring = BASE_BOOKS[b_id]["ring"]
+        status = BASE_BOOKS[b_id]["status"]
+    else:
+        name = f"Reserve Slot {b_id}"
+        ring = "RING_4"
+        status = "RESERVE_SEALED"
+    
+    formatted_title = f"{i}.  [{b_id}] {name} | 63[TWIN] 45[LINEAGE]"
+    BOOK_REGISTRY[b_id] = {
+        "name": name,
+        "formatted_title": formatted_title,
+        "ring": ring,
+        "status": status
+    }
+
+RING_HIERARCHY = {
+    "HADES": 0,
+    "RING_0": 1,
+    "RING_1": 2,
+    "RING_2": 3,
+    "RING_3": 4,
+    "RING_4": 5,
+    "RING_5": 6,
 }
 
 @app.get("/")
 def read_root():
-    return {"status": "Aragon Ultima Backend is LIVE with all 68 Books"}
+    return {"status": "Aragon Ultima Backend is LIVE with all 139 Books (v2)"}
 
 @app.get("/books/sorted")
 def get_sorted_books():
-    """
-    Liefert alle 68 BÃ¼cher sortiert nach Ring-StÃ¤rke (steigend von HADES/RING_0 bis RING_5)
-    und innerhalb desselben Rings chronologisch nach Buch-ID.
-    """
     sorted_list = sorted(
         [{"id": book_id, **data} for book_id, data in BOOK_REGISTRY.items()],
         key=lambda b: (RING_HIERARCHY.get(b["ring"], 99), int(b["id"]))
@@ -128,20 +143,17 @@ async def check_prompt(request: PromptRequest):
     prompt = request.prompt
     prompt_lower = prompt.lower()
     
-    # 1. Krisler Guard
     risk_level = "high" if any(w in prompt_lower for w in ["ultra root", "odin", "singularitÃ¤t", "apokalyptisch"]) else "low"
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
-    # 2. BÃ¼cher-Suche (Gibt alle Treffer zurÃ¼ck)
     found_books = []
     for book_id, data in BOOK_REGISTRY.items():
         if book_id in prompt_lower or data["name"].lower() in prompt_lower:
             found_books.append({"id": book_id, **data})
             
-    # 3. WORM Hash & Seal
     timestamp = str(time.time())
-    raw_data = f"{prompt}{timestamp}{risk_level}".encode('utf-8')
+    raw_data = f"{prompt}{timestamp}{risk_level}".encode("utf-8")
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
     master_seal = "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab"
     
