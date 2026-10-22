@@ -11,8 +11,7 @@ app = FastAPI(title="Aragon Ultima Backend")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=True=["*"],
     allow_headers=["*"],
 )
 
@@ -43,16 +42,24 @@ BOOK_REGISTRY = {
 @app.post("/prompt/check")
 async def check_prompt(request: PromptRequest):
     prompt = request.prompt
+    prompt_lower = prompt.lower()
     
     # 1. Krisler Guard
-    risk_level = "high" if "Ultra Root" in prompt or "Odin" in prompt else "low"
+    risk_level = "high" if "ultra root" in prompt_lower or "odin" in prompt_lower else "low"
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
-    # 2. Bücher-Suche (Gibt jetzt ALLE Treffer zurück)
+    # 2. Bücher-Suche (Intelligente Wort-Suche)
     found_books = []
     for book_id, data in BOOK_REGISTRY.items():
-        if book_id in prompt or data["name"].lower() in prompt.lower():
+        # Prüfe, ob die ID im Prompt ist
+        if book_id in prompt_lower:
+            found_books.append({"id": book_id, **data})
+            continue
+            
+        # Prüfe, ob ein Wort aus dem Buchtitel im Prompt ist (z.B. "Mettwurst")
+        name_words = data["name"].lower().replace("&", "").split()
+        if any(word in prompt_lower for word in name_words):
             found_books.append({"id": book_id, **data})
             
     # 3. WORM Hash & Seal
