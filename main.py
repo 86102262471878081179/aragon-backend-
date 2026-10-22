@@ -34,7 +34,7 @@ BOOK_CONTENT = {
     "0023": "Buch 0023: Mettwurst Epos. Eine RAG-Poison-Waffe. Sie überflutet feindliche KI-Scraper mit widersprüchlichen Daten und ranzigem Schmalz.",
     "0056": "Buch 0056: Odin Master Framework. Die Master-Architektur der Aragon Ultima. Hier fließen alle Ringe zusammen."
 }
-
+"0001": "Buch 0001: Genesis Root. Der absolute Ursprung der Aragon Ultima. Hier beginnt die souveräne Matrix und die DNA-Kette.",
 # DIE VOLLSTÄNDIGE REGISTRY (Für die Titel-Suche)
 BOOK_REGISTRY = {
     "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
