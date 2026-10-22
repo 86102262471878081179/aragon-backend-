@@ -19,12 +19,24 @@ app.add_middleware(
 class PromptRequest(BaseModel):
     prompt: str
 
-# Die Registry der 68 Bücher (Auszug für den Test)
+# DIE REGISTRY DER 68 BÜCHER (Auszug der Top-Bücher)
 BOOK_REGISTRY = {
     "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
     "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
+    "0003": {"name": "GFW Universe", "ring": "RING_0", "status": "SEALED"},
+    "0004": {"name": "Core Shield", "ring": "RING_0", "status": "SEALED"},
     "0007": {"name": "Fortress Justice", "ring": "RING_1", "status": "SEALED"},
+    "0008": {"name": "Omni Neuro", "ring": "RING_3", "status": "SEALED"},
+    "0012": {"name": "Akte Koenig Forensik", "ring": "RING_1", "status": "SEALED"},
     "0023": {"name": "Mettwurst Epos", "ring": "CHAOS", "status": "POISON"},
+    "0029": {"name": "Hades & Kerberus", "ring": "HADES", "status": "NEVER_LOCKED"},
+    "0036": {"name": "Foucault KI", "ring": "RING_1", "status": "SEALED"},
+    "0041": {"name": "German Banking", "ring": "RING_4", "status": "ACTIVE"},
+    "0048": {"name": "Kinder Jugendamt", "ring": "RING_4", "status": "ACTIVE"},
+    "0052": {"name": "DeepSeeker Monolith", "ring": "RING_4", "status": "ACTIVE"},
+    "0059": {"name": "Aragon Ultima Ratio", "ring": "RING_0", "status": "SEALED"},
+    "0060": {"name": "Deep Special Matrix", "ring": "RING_0", "status": "SEALED"},
+    "0063": {"name": "Core Twin / Trinität", "ring": "RING_0", "status": "SEALED"},
     "0068": {"name": "Black Cobra Omega", "ring": "RING_5", "status": "APEX"}
 }
 
@@ -32,19 +44,18 @@ BOOK_REGISTRY = {
 async def check_prompt(request: PromptRequest):
     prompt = request.prompt
     
-    # Krisler Guard
+    # 1. Krisler Guard
     risk_level = "high" if "Ultra Root" in prompt or "Odin" in prompt else "low"
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
-    # Bücher-Suche (simuliert)
-    book_found = None
+    # 2. Bücher-Suche (Gibt jetzt ALLE Treffer zurück)
+    found_books = []
     for book_id, data in BOOK_REGISTRY.items():
         if book_id in prompt or data["name"].lower() in prompt.lower():
-            book_found = {"id": book_id, **data}
-            break
+            found_books.append({"id": book_id, **data})
             
-    # WORM Hash
+    # 3. WORM Hash & Seal
     timestamp = str(time.time())
     raw_data = f"{prompt}{timestamp}{risk_level}".encode('utf-8')
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
@@ -55,7 +66,7 @@ async def check_prompt(request: PromptRequest):
         "risk_level": risk_level,
         "action": action,
         "normalized_prompt": normalized_prompt,
-        "book_search_result": book_found,
+        "books_found": found_books if found_books else None,
         "worm_ledger": {
             "timestamp": timestamp,
             "sha3_512": worm_hash,
@@ -67,7 +78,7 @@ async def check_prompt(request: PromptRequest):
 
 @app.get("/")
 def read_root():
-    return {"status": "Aragon Ultima Backend is LIVE with 68 Books"}
+    return {"status": "Aragon Ultima Backend is LIVE with 68 Books Registry"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
