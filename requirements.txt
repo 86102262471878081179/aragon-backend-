@@ -1,3 +1,1 @@
-fastapi
-uvicorn
-pydantic
+fastapi&gt;=0.110.0 uvicorn[standard]&gt;=0.28.0 pydantic&gt;=2.6.0
