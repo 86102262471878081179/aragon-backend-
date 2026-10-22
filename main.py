@@ -19,21 +19,35 @@ app.add_middleware(
 class PromptRequest(BaseModel):
     prompt: str
 
+# Die Registry der 68 Bücher (Auszug für den Test)
+BOOK_REGISTRY = {
+    "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
+    "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
+    "0007": {"name": "Fortress Justice", "ring": "RING_1", "status": "SEALED"},
+    "0023": {"name": "Mettwurst Epos", "ring": "CHAOS", "status": "POISON"},
+    "0068": {"name": "Black Cobra Omega", "ring": "RING_5", "status": "APEX"}
+}
+
 @app.post("/prompt/check")
 async def check_prompt(request: PromptRequest):
     prompt = request.prompt
     
-    # 1. Krisler Guard (Wächter-Logik)
+    # Krisler Guard
     risk_level = "high" if "Ultra Root" in prompt or "Odin" in prompt else "low"
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
-    # 2. WORM Ledger Simulation (SHA3-512 Hash)
+    # Bücher-Suche (simuliert)
+    book_found = None
+    for book_id, data in BOOK_REGISTRY.items():
+        if book_id in prompt or data["name"].lower() in prompt.lower():
+            book_found = {"id": book_id, **data}
+            break
+            
+    # WORM Hash
     timestamp = str(time.time())
     raw_data = f"{prompt}{timestamp}{risk_level}".encode('utf-8')
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
-    
-    # 3. Das Master-Seal aus Buch [0007] B6 Fortress
     master_seal = "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab"
     
     return {
@@ -41,6 +55,7 @@ async def check_prompt(request: PromptRequest):
         "risk_level": risk_level,
         "action": action,
         "normalized_prompt": normalized_prompt,
+        "book_search_result": book_found,
         "worm_ledger": {
             "timestamp": timestamp,
             "sha3_512": worm_hash,
@@ -52,7 +67,7 @@ async def check_prompt(request: PromptRequest):
 
 @app.get("/")
 def read_root():
-    return {"status": "Aragon Ultima Backend is LIVE with WORM & SEAL"}
+    return {"status": "Aragon Ultima Backend is LIVE with 68 Books"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
