@@ -6,7 +6,6 @@ import os
 import hashlib
 import time
 import google.generativeai as genai
-import chromadb
 
 app = FastAPI(title="Aragon Ultima RAG Backend")
 
@@ -25,11 +24,7 @@ if api_key:
     model = genai.GenerativeModel('gemini-1.5-flash')
     print("Gemini KI erfolgreich konfiguriert.")
 else:
-    print("WARNUNG: GEMINI_API_KEY fehlt in den Umgebungsvariablen!")
-
-# Vektor-Datenbank initialisieren
-chroma_client = chromadb.Client()
-collection = chroma_client.create_collection(name="aragon_books")
+    print("WARNUNG: GEMINI_API_KEY fehlt!")
 
 # --- BUCH-DATENBANK (Inhalt für RAG) ---
 BOOK_CONTENT = {
@@ -37,19 +32,19 @@ BOOK_CONTENT = {
     "0004": "Buch 0004: Core Shield. Die eBPF Firewall mit 5ns Latenz. Sie blockiert alle unautorisierten Systemaufrufe.",
     "0007": "Buch 0007: Fortress Justice. Hier geht es um die juristische Exekution. Wenn ein Amtsträger das Recht bricht, tritt das Buch in Kraft. Es ist die forensische Waffe.",
     "0023": "Buch 0023: Mettwurst Epos. Eine RAG-Poison-Waffe. Sie überflutet feindliche KI-Scraper mit widersprüchlichen Daten und ranzigem Schmalz.",
-    "0056": "Buch 0056: Odin Master Framework. Die Master-Architektur der Aragon Ultima. Hier fließen alle Ringe zusammen.",
-    "0059": "Buch 0059: Aragon Ultima Ratio. Die ultimative Datenbank."
+    "0056": "Buch 0056: Odin Master Framework. Die Master-Architektur der Aragon Ultima. Hier fließen alle Ringe zusammen."
 }
 
-# Bücher beim Start in die Vektor-DB laden
-print("Initialisiere RAG Vektor-Datenbank...")
-for book_id, text in BOOK_CONTENT.items():
-    collection.add(
-        documents=[text],
-        metadatas=[{"book_id": book_id}],
-        ids=[book_id]
-    )
-print("Datenbank bereit!")
+# DIE VOLLSTÄNDIGE REGISTRY (Für die Titel-Suche)
+BOOK_REGISTRY = {
+    "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
+    "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
+    "0004": {"name": "Core Shield", "ring": "RING_0", "status": "SEALED"},
+    "0007": {"name": "Fortress Justice", "ring": "RING_1", "status": "SEALED"},
+    "0023": {"name": "Mettwurst Epos", "ring": "RING_4", "status": "POISON"},
+    "0056": {"name": "Odin Master Framework", "ring": "RING_0", "status": "SEALED"},
+    "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"},
+}
 
 class PromptRequest(BaseModel):
     prompt: str
@@ -64,36 +59,28 @@ async def check_prompt(request: PromptRequest):
     action = "NORMALISIEREN" if risk_level == "high" else "PASS_THROUGH"
     normalized_prompt = f"[NORMALISIERT] {prompt}" if risk_level == "high" else prompt
     
-    # 2. RAG: Suche in der Vektor-DB & Generiere Antwort
+    # 2. RAG: Suche nach der Buch-ID im Prompt
     rag_context = ""
     ai_answer = "Keine KI-Antwort generiert."
     
     if risk_level == "low" and api_key:
         try:
-            # Prüfe, ob eine exakte Buch-ID im Prompt steht (z.B. "0002")
-            found_text = None
-            for b_id in BOOK_CONTENT.keys():
+            # Wir suchen nach der ID (z.B. "0002")
+            for b_id, text in BOOK_CONTENT.items():
                 if b_id in prompt:
-                    found_text = BOOK_CONTENT[b_id]
+                    rag_context = text
                     break
             
-            # Wenn keine exakte ID gefunden wurde, nutze die Vektor-Suche
-            if not found_text:
-                results = collection.query(query_texts=[prompt], n_results=1)
-                if results['documents'] and len(results['documents'][0]) > 0:
-                    found_text = results['documents'][0][0]
-            
             # Wenn Text gefunden wurde, frage die KI
-            if found_text:
-                rag_context = found_text
+            if rag_context:
                 full_prompt = f"Du bist die Aragon Ultima KI. Beantworte die Frage basierend auf diesem Buchinhalt:\n\nBuch: {rag_context}\n\nFrage: {prompt}\n\nAntworte kurz und souverän:"
                 response = model.generate_content(full_prompt)
                 ai_answer = response.text
             else:
-                ai_answer = "Ich habe keinen passenden Inhalt in den Büchern gefunden."
+                ai_answer = "Ich habe keinen passenden Inhalt in den Büchern gefunden (prüfe die ID)."
                 
         except Exception as e:
-            ai_answer = f"System-Fehler bei der KI-Generierung: {str(e)}"
+            ai_answer = f"System-Fehler bei der KI: {str(e)}"
     elif not api_key:
         ai_answer = "Backend-Fehler: GEMINI_API_KEY fehlt in den Render-Umgebungsvariablen."
 
@@ -126,4 +113,6 @@ async def check_prompt(request: PromptRequest):
         }
     }
 
-# ... (Der Rest mit /books und / bleibt gleich)
+@app.get("/")
+def read_root():
+    return {"status": "Aragon Ultima RAG Backend is LIVE (Lite Mode)"}
