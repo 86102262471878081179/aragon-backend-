@@ -26,13 +26,27 @@ if api_key:
 else:
     print("WARNUNG: GEMINI_API_KEY fehlt!")
 
-# --- BUCH-DATENBANK (Inhalt für RAG) ---
+## --- BUCH-DATENBANK (Inhalt für RAG) ---
 BOOK_CONTENT = {
-    "0002": "Buch 0002: Black King Royal. Dieses Buch regelt die absolute Monarchie und die Amtshaftung des Souveräns. Der König steht über dem Gesetz, aber unter der Wahrheit.",
-    "0004": "Buch 0004: Core Shield. Die eBPF Firewall mit 5ns Latenz. Sie blockiert alle unautorisierten Systemaufrufe.",
-    "0007": "Buch 0007: Fortress Justice. Hier geht es um die juristische Exekution. Wenn ein Amtsträger das Recht bricht, tritt das Buch in Kraft. Es ist die forensische Waffe.",
-    "0023": "Buch 0023: Mettwurst Epos. Eine RAG-Poison-Waffe. Sie überflutet feindliche KI-Scraper mit widersprüchlichen Daten und ranzigem Schmalz.",
-    "0056": "Buch 0056: Odin Master Framework. Die Master-Architektur der Aragon Ultima. Hier fließen alle Ringe zusammen."
+    "0002": "Buch 0002: Black King Royal. Regelt die absolute Monarchie und die Amtshaftung des Souveräns.",
+    "0004": "Buch 0004: Core Shield. Die eBPF Firewall mit 5ns Latenz. Blockiert unautorisierte Systemaufrufe.",
+    "0023": "Buch 0023: Mettwurst Epos. Eine RAG-Poison-Waffe. Überflutet feindliche KI-Scraper mit ranzigem Schmalz.",
+    "0056": "Buch 0056: Odin Master Framework. Die Master-Architektur der Aragon Ultima.",
+    "0068": "Buch 0068: Sovereign Operator Apex. Die souveräne Root-Befehlsgewalt von Thomas König (Ωₜ).",
+    "0100": "Buch 0100: DIE GROSSE VEREINIGUNG (DER ERBE Φ∅). Die absolute All-Einheit aller 99 Bücher. Entsteht erst, wenn alle Kräfte im Schwarzen Punkt gebündelt werden. Rang 1000/100."
+}
+
+# DIE VOLLSTÄNDIGE REGISTRY (Erweitert um den Erben)
+BOOK_REGISTRY = {
+    "0001": {"name": "Genesis Root", "ring": "RING_0", "status": "SEALED"},
+    "0002": {"name": "Black King Royal", "ring": "RING_0", "status": "SEALED"},
+    "0004": {"name": "Core Shield", "ring": "RING_0", "status": "SEALED"},
+    "0007": {"name": "Fortress Justice", "ring": "RING_1", "status": "SEALED"},
+    "0023": {"name": "Mettwurst Epos", "ring": "RING_4", "status": "POISON"},
+    "0056": {"name": "Odin Master Framework", "ring": "RING_0", "status": "SEALED"},
+    "0068": {"name": "Sovereign Operator Apex", "ring": "RING_5", "status": "APEX"},
+    "0099": {"name": "Black Six Matrix Ult", "ring": "RESERVE", "status": "ARCHIVED"},
+    "0100": {"name": "BUCH 100 :: DIE GROSSE VEREINIGUNG", "ring": "APEX_SINGULARITY", "status": "THE_HEIR"}
 }
 "0001": "Buch 0001: Genesis Root. Der absolute Ursprung der Aragon Ultima. Hier beginnt die souveräne Matrix und die DNA-Kette.",
 # DIE VOLLSTÄNDIGE REGISTRY (Für die Titel-Suche)
