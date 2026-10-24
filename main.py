@@ -35,15 +35,22 @@ if api_key:
 BOOK_REGISTRY = {}
 
 def load_registry_from_github():
-    """Zieht die CSV live von GitHub und parst sie in das Dictionary."""
+    """Zieht die CSV live von GitHub, filtert Markdown-Kommentare und parst sie."""
     global BOOK_REGISTRY
-    url = "https://raw.githubusercontent.com/86102262471878081179/aragon-backend-/main/aragon_registry_200.csv"
+    # Die korrekte Raw-URL für deine .csv.md Datei
+    url = "https://raw.githubusercontent.com/86102262471878081179/aragon-backend-/main/aragon_registry_200.csv.md"
     try:
         response = httpx.get(url, timeout=10.0)
         if response.status_code == 200:
-            reader = csv.DictReader(io.StringIO(response.text), delimiter=';')
+            # Filtere Zeilen, die mit # beginnen oder komplett leer sind
+            lines = response.text.splitlines()
+            clean_csv_lines = [line for line in lines if line.strip() and not line.startswith("#")]
+            
+            # Jetzt parsen
+            csv_data = "\n".join(clean_csv_lines)
+            reader = csv.DictReader(io.StringIO(csv_data), delimiter=';')
+            
             for row in reader:
-                # Wir mappen die CSV-Spalten auf unsere gewohnte Struktur
                 book_id = row.get('ID', 'UNKNOWN')
                 BOOK_REGISTRY[book_id] = {
                     "name": row.get('Name', 'UNKNOWN'),
@@ -62,6 +69,8 @@ def load_registry_from_github():
     except Exception as e:
         print(f"[ERROR] CSV Ingestion fehlgeschlagen: {e}")
 
+# Lade die CSV beim Start des Servers
+load_registry_from_github()
 # Lade die CSV beim Start des Servers
 load_registry_from_github()
 
