@@ -133,8 +133,13 @@ async def check_prompt(request: PromptRequest):
             ai_answer = response.text
         except Exception as e:
             ai_answer = f"System-Fehler bei der KI: {str(e)}"
-    elif not rag_context:
-        ai_answer = "Ich habe keinen passenden Inhalt in den Büchern gefunden."
+    elif not rag_context and api_key:
+        try:
+            # Wenn kein Buch gefunden wurde, schicke den Prompt DIREKT an Gemini
+            response = model.generate_content(prompt)
+            ai_answer = response.text
+        except Exception as e:
+            ai_answer = f"System-Fehler bei der KI: {str(e)}"
 
     # 5. WORM LEDGER (SHA3-512)
     timestamp = str(time.time())
