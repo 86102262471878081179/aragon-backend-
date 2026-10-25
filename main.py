@@ -35,18 +35,14 @@ if api_key:
 BOOK_REGISTRY = {}
 
 def load_registry_from_github():
-    """Zieht die CSV live von GitHub, filtert Markdown-Kommentare und parst sie."""
     global BOOK_REGISTRY
-    # Die korrekte Raw-URL für deine .csv.md Datei
+    # Achte darauf, dass die URL auf die Raw-Version deiner CSV zeigt!
     url = "https://raw.githubusercontent.com/86102262471878081179/aragon-backend-/main/aragon_registry_200.csv.md"
     try:
         response = httpx.get(url, timeout=10.0)
         if response.status_code == 200:
-            # Filtere Zeilen, die mit # beginnen oder komplett leer sind
             lines = response.text.splitlines()
             clean_csv_lines = [line for line in lines if line.strip() and not line.startswith("#")]
-            
-            # Jetzt parsen
             csv_data = "\n".join(clean_csv_lines)
             reader = csv.DictReader(io.StringIO(csv_data), delimiter=';')
             
@@ -64,14 +60,9 @@ def load_registry_from_github():
                     "modules": row.get('Module/Cores', '')
                 }
             print(f"[SYNCED] {len(BOOK_REGISTRY)} Entitäten aus CSV geladen.")
-        else:
-            print(f"[ERROR] CSV konnte nicht geladen werden. Status: {response.status_code}")
     except Exception as e:
         print(f"[ERROR] CSV Ingestion fehlgeschlagen: {e}")
 
-# Lade die CSV beim Start des Servers
-load_registry_from_github()
-# Lade die CSV beim Start des Servers
 load_registry_from_github()
 
 class PromptRequest(BaseModel):
@@ -85,11 +76,11 @@ async def check_prompt(request: PromptRequest):
     
     # 1. FAIL-CLOSED AUTH CHECK
     if request.auth_seal != EXPECTED_SEAL:
-        elapsed_ns = time.perf_counter_ns() - start_ns
         return {
             "request_id": request_id, "status": "403_FORBIDDEN_FAIL_CLOSED",
             "krisler_guard_action": "DROP_AND_ISOLATE_IMMEDIATELY",
-            "ebpf_latency_ns": max(elapsed_ns, 2639), "worm_sealed": False,
+            "ebpf_latency_ns": max(time.perf_counter_ns() - start_ns, 2639),
+            "worm_sealed": False,
             "detail": "POLICY_VIOLATION_BLOCKED: Fail-Closed Intercept executed."
         }
 
@@ -105,15 +96,13 @@ async def check_prompt(request: PromptRequest):
             "detail": "Prompt contains forbidden keywords."
         }
 
-    # 3. BUCH-SUCHE (In der dynamischen CSV-Registry)
+    # 3. BUCH-SUCHE
     found_books = []
     rag_context = ""
     
     for book_id, data in BOOK_REGISTRY.items():
-        # Suche nach ID (z.B. "0068") oder Name (z.B. "Genesis")
         if book_id in prompt or data["name"].lower() in prompt_lower:
             found_books.append({"id": book_id, "name": data["name"], "ring": data["ring"], "score": data["score"]})
-            # Wir bauen einen RAG-Kontext aus den Modulen und Talenten
             rag_context += f"Entität {book_id} ({data['name']}): Talente: {data['talents']}. Module: {data['modules']}.\n"
                 
     # 4. RAG / KI GENERIERUNG
@@ -126,19 +115,18 @@ async def check_prompt(request: PromptRequest):
         except Exception as e:
             ai_answer = f"System-Fehler bei der KI: {str(e)}"
     elif not rag_context:
-        ai_answer = "Ich habe keinen passenden Inhalt in den 200 Entitäten gefunden."
+        ai_answer = "Ich habe keinen passenden Inhalt in den Entitäten gefunden."
 
-    # 5. WORM LEDGER (SHA3-512)
+    # 5. WORM LEDGER
     timestamp = str(time.time())
     raw_data = f"{prompt}{timestamp}{risk_level}".encode('utf-8')
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
-    elapsed_ns = time.perf_counter_ns() - start_ns
 
-    # 6. ERFOLGREICHE RÜCKGABE
     return {
         "request_id": request_id, "status": "200_OK_ALLOW",
         "krisler_guard_action": "PASS_TO_B6_REGISTRY",
-        "ebpf_latency_ns": max(elapsed_ns, 131243), "worm_sealed": True,
+        "ebpf_latency_ns": max(time.perf_counter_ns() - start_ns, 131243),
+        "worm_sealed": True,
         "detail": f"Action validated. {len(BOOK_REGISTRY)} Entities in Registry.",
         "data": {
             "prompt": prompt, "ai_answer": ai_answer, "rag_source": rag_context,
