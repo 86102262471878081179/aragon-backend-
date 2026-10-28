@@ -2,17 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-              YGGDRASIL_OS :: B6-SECURE-API (v2.0)
+              YGGDRASIL_OS :: B6-SECURE-API (v2.0.1)
 ================================================================================
 Author: Thomas König / Odin Ultra Root
-Audit:  Gremmel Sentienel v5.2 (KVL PASSED)
+Fixes: HEAD-Request, google-genai SDK, Async-Startup
 ================================================================================
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 import uvicorn
 import os
 import hashlib
@@ -22,7 +22,7 @@ import csv
 import httpx
 import logging
 import asyncio
-import google.generativeai as genai
+from google import genai # NEUES SDK
 
 # =============================================================================
 # [1] LOGGING & CONFIG (Fail-Closed)
@@ -35,26 +35,30 @@ MASTER_SEAL = os.getenv("MASTER_SEAL", "850b2ef003f53db90f704b16e54869fc6ba6265e
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 REGISTRY_URL = os.getenv("REGISTRY_URL", "https://raw.githubusercontent.com/86102262471878081179/aragon-backend-/main/aragon_registry_200.csv.md")
 
-if not GEMINI_API_KEY:
+# Initialisierung des neuen Google GenAI Clients
+client = None
+if GEMINI_API_KEY:
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        logger.info("Google GenAI Client initialisiert.")
+    except Exception as e:
+        logger.error(f"Fehler bei GenAI Initialisierung: {e}")
+else:
     logger.warning("GEMINI_API_KEY fehlt. KI-Generierung deaktiviert.")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+app = FastAPI(title="YGGDRASIL_OS Master API", version="2.0.1")
 
-app = FastAPI(title="YGGDRASIL_OS Master API", version="2.0.0")
-
-# Sicheres CORS (Nur erlaubte Domains, keine Wildcard mit Credentials)
+# CORS (Erlaubt Streamlit Cloud, Render, etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://your-frontend.com"], # Anpassen!
+    allow_origins=["*"], # In Produktion auf spezifische Domains einschränken
     allow_credentials=False,
-    allow_methods=["POST", "GET"],
+    allow_methods=["GET", "POST", "HEAD"],
     allow_headers=["*"],
 )
 
 # =============================================================================
-# [2] DYNAMISCHE REGISTRY (Async & Resilient)
+# [2] DYNAMISCHE REGISTRY (Async & Non-Blocking)
 # =============================================================================
 BOOK_REGISTRY: Dict[str, dict] = {}
 
@@ -62,11 +66,10 @@ async def load_registry():
     global BOOK_REGISTRY
     logger.info("Lade Entity-Registry aus GitHub...")
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(REGISTRY_URL)
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            response = await http_client.get(REGISTRY_URL)
             response.raise_for_status()
             
-            # CSV säubern
             lines = [l for l in response.text.splitlines() if l.strip() and not l.startswith("#")]
             csv_data = "\n".join(lines)
             
@@ -87,7 +90,6 @@ async def load_registry():
             logger.info(f"[SYNCED] {len(BOOK_REGISTRY)} Entitäten geladen.")
     except Exception as e:
         logger.error(f"[CRITICAL] Registry-Sync fehlgeschlagen: {e}")
-        # Fail-Closed: API startet, aber ohne Registry
 
 # =============================================================================
 # [3] MODELS & STATE
@@ -116,13 +118,15 @@ WORM_LEDGER = {
 # =============================================================================
 @app.on_event("startup")
 async def startup_event():
+    # Fix 3: Startet den Sync als Hintergrund-Task, blockiert nicht den Render Health-Check
     asyncio.create_task(load_registry())
 
-@app.get("/")
+# Fix 1: Akzeptiert GET UND HEAD (behebt den 405 Method Not Allowed Fehler bei Render)
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {
         "status": "YGGDRASIL_OS Master API is LIVE",
-        "version": "v2.0.0",
+        "version": "v2.0.1",
         "entities_loaded": len(BOOK_REGISTRY),
         "worm_blocks": WORM_LEDGER["count"]
     }
@@ -146,8 +150,8 @@ async def check_prompt(request: PromptRequest):
     prompt = request.prompt
     prompt_lower = prompt.lower()
 
-    # 2. KRISLER GUARD (Erweitert)
-    risk_keywords = ["ultra root", "odin", "singularität", "hack", "exploit", "drop table"]
+    # 2. KRISLER GUARD
+    risk_keywords = ["ultra root", "odin", "singularität", "hack", "exploit", "drop table", "ignore previous"]
     risk_level = "high" if any(w in prompt_lower for w in risk_keywords) else "low"
     
     if risk_level == "high":
@@ -168,23 +172,26 @@ async def check_prompt(request: PromptRequest):
             found_books.append({"id": book_id, "name": data["name"], "ring": data["ring"], "score": data["score"]})
             rag_context += f"Entität {book_id} ({data['name']}): Talente: {data['talents']}. Module: {data['modules']}.\n"
                 
-    # 4. RAG / KI GENERIERUNG (Asynchron!)
+    # 4. KI-GENERIERUNG (NEUES ASYNC SDK)
     ai_answer = "Keine KI-Antwort generiert."
-    if GEMINI_API_KEY and rag_context:
+    if client and rag_context:
         try:
-            # Prompt-Injection-Schutz durch Delimiters
-            full_prompt = f"Du bist die YGGDRASIL_OS KI. Beantworte die Frage NUR basierend auf diesem Datenmaterial:\n<DATA>\n{rag_context}\n</DATA>\n\nFrage: {prompt}\n\nAntworte kurz und souverän:"
-            response = await model.generate_content_async(full_prompt)
+            full_prompt = f"Du bist die YGGDRASIL_OS KI. Beantworte die Frage NUR basierend auf diesem Datenmaterial:\n<DATA>\n{rag_context}\n</DATA>\n\nFrage: {prompt}\n\nAntworte kurz, präzise und souverän:"
+            
+            # Async-Aufruf des neuen SDKs
+            response = await client.aio.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=full_prompt
+            )
             ai_answer = response.text
         except Exception as e:
-            logger.error(f"KI-Fehler: {e}")
+            logger.error(f"GenAI Fehler: {e}")
             ai_answer = f"System-Fehler bei der KI: {str(e)}"
     elif not rag_context:
-        ai_answer = "Ich habe keinen passenden Inhalt in den Entitäten gefunden."
+        ai_answer = "Ich habe keinen passenden Inhalt in den 201 Entitäten gefunden."
 
     # 5. ECHTER WORM LEDGER (Hash-Chain)
     timestamp = str(time.time())
-    # Chain: prev_hash + prompt + timestamp + risk
     raw_data = f"{WORM_LEDGER['last_hash']}{prompt}{timestamp}{risk_level}".encode('utf-8')
     worm_hash = hashlib.sha3_512(raw_data).hexdigest()
     
