@@ -1,0 +1,22 @@
+# api/main.py (Ausschnitt)
+import sqlite3
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/api/v1/registry/{entity_id}")
+def get_entity(entity_id: str):
+    conn = sqlite3.connect("b6_registry.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM entities WHERE id = ?", (entity_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return {"error": "Entity not found"}
+        
+    return {
+        "id": row[0], "name": row[1], "matrix": row[2], 
+        "score_1": row[3], "trait_1": row[4], 
+        "score_2": row[5], "trait_2": row[6]
+    }
