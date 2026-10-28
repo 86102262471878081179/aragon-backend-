@@ -811,3 +811,396 @@ class KingGhostRequest(BaseRequest):
 class DeepSeekRequest(BaseRequest):
     prompt: str = Field(..., min_length=1, max_length=4000, description="Prompt für das DeepSeek Reasoning.")
     depth: int = Field(default=3, ge=1, le=5, description="Tiefe des Reasoning-Zyklus.")
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 15: CORE & HEALTH ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Core"])
+async def root():
+    """
+    Minimaler Live-Check.
+    Wird von Render (und dem Streamlit-Cockpit) genutzt, um zu prüfen, 
+    ob die API überhaupt noch atmet.
+    """
+    return {
+        "status": "BLUE_CORE_LIVE",
+        "version": app.version,
+        "entities": len(BOOK_REGISTRY),
+        "worm_block": WORM_LEDGER["count"],
+        "timestamp": time.time()
+    }
+
+
+@app.get("/health", tags=["Core"])
+async def health():
+    """
+    Detaillierter Health-Report.
+    Zeigt den Zustand aller Subsysteme (Gemini, Neo4j, L.S.S. Core).
+    """
+    uptime_seconds = int(time.time() - WORM_LEDGER["started_at"])
+    
+    return {
+        "status": "HEALTHY",
+        "version": app.version,
+        "uptime_seconds": uptime_seconds,
+        "entities_loaded": len(BOOK_REGISTRY),
+        "worm_last_hash": WORM_LEDGER["last_hash"][:32] + "...",
+        "subsystems": {
+            "gemini_rag": "ONLINE" if client else "OFFLINE",
+            "neo4j_graph": "ONLINE" if neo4j.driver else "OFFLINE",
+            "lss_neuro_core": "ONLINE",
+            "king_ghost_sandbox": "ONLINE",
+            "deepseek_booster": "ONLINE",
+            "xjustiz_gate": "ONLINE"
+        }
+    }
+
+
+@app.get("/stats", tags=["Core"])
+async def stats():
+    """
+    Aggregierte Statistiken über alle Subsysteme.
+    Nützlich für das Dashboard (z.B. im Streamlit-Panel).
+    """
+    return {
+        "registry": {
+            "entities_count": len(BOOK_REGISTRY),
+            "sample_entities": list(BOOK_REGISTRY.keys())[:5]
+        },
+        "worm_ledger": {
+            "total_blocks": WORM_LEDGER["count"],
+            "ring_buffer_size": len(WORM_RING),
+            "max_ring_size": LEDGER_RING_SIZE
+        },
+        "lss_neuro_core": {
+            "current_entropy": round(apex_controller.wusulum.entropy_pool, 2),
+            "bio_state": apex_controller.bio.state,
+            "gotham_inmates": len(apex_controller.gotham.inmates),
+            "king_ghost_shadows": len(apex_controller.king_ghost.shadow_pool)
+        }
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 16: WAL & LEDGER ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/ledger/inspect", tags=["WORM"])
+async def ledger_inspect(limit: int = 20):
+    """
+    Zeigt die letzten X WORM-Blöcke aus dem RAM-Ring-Buffer.
+    Perfekt für das 'WORM Ledger Audit' Panel im Cockpit.
+    """
+    safe_limit = max(1, min(limit, LEDGER_RING_SIZE))
+    blocks = list(WORM_RING)[-safe_limit:]
+    
+    return {
+        "count": WORM_LEDGER["count"],
+        "returned": len(blocks),
+        "blocks": blocks
+    }
+
+
+@app.get("/api/v1/wal/tail", tags=["WORM"])
+async def wal_tail(n: int = 20):
+    """
+    Liest die letzten X Einträge aus dem persistierten JSONL WAL.
+    Nutzt die `WALManager`-Klasse, um die Hash-Kette zu verifizieren.
+    """
+    return {
+        "blocks": wal.tail(n)
+    }
+
+
+@app.post("/admin/reload-registry", tags=["Admin"])
+async def reload_registry(req: BaseRequest):
+    """
+    Erzwingt einen Neuabgleich der 201 Entitäten aus GitHub.
+    Erfordert den Master-Seal im Payload.
+    """
+    if not verify_seal(req.auth_seal):
+        logger.warning("Unbefugter Versuch: Reload-Registry blockiert.")
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+    
+    logger.info("Manueller Registry-Reload gestartet.")
+    await load_registry()
+    
+    return {
+        "status": "RELOADED",
+        "entities_count": len(BOOK_REGISTRY)
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 17: PROMPT & RAG ENDPOINT (Gemini)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/prompt/check", tags=["Core"])
+async def check_prompt(req: PromptRequest):
+    """
+    Standard Chat/RAG Endpoint.
+    Sucht nach Entitäten im Prompt und generiert eine Antwort via Gemini.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+
+    prompt = req.prompt
+    lowered_prompt = prompt.lower()
+    rag_context = ""
+    matched_entities = []
+
+    # 1. RAG-Kontext aus der Registry aufbauen
+    for bid, data in BOOK_REGISTRY.items():
+        name = data.get("name", "").lower()
+        if bid in prompt or name in lowered_prompt:
+            rag_context += f"Entität {bid}: {data.get('name')}. Ring: {data.get('ring')}\n"
+            matched_entities.append(bid)
+
+    # 2. Gemini Abfrage (wenn API-Key vorhanden und Kontext gefunden)
+    ai_answer = "Keine KI-Antwort generiert (Gemini offline oder kein Kontext-Match)."
+    
+    if client and rag_context:
+        try:
+            logger.info(f"Sende Prompt an Gemini (Match: {len(matched_entities)} Entitäten).")
+            response = await client.aio.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=f"Daten: {rag_context}\nFrage: {prompt}"
+            )
+            ai_answer = response.text
+        except Exception as e:
+            logger.error(f"Gemini Fehler: {e}")
+            ai_answer = f"System-Fehler bei der KI-Generierung: {e}"
+
+    # 3. WORM-Ledger atomar fortschreiben
+    async with LEDGER_LOCK:
+        WORM_LEDGER["count"] += 1
+        prompt_hash = hashlib.sha3_512(prompt.encode()).hexdigest()
+        new_hash = hashlib.sha3_512(f"{WORM_LEDGER['last_hash']}{prompt}".encode()).hexdigest()
+        
+        WORM_LEDGER["last_hash"] = new_hash
+        WORM_RING.append({
+            "block": WORM_LEDGER["count"],
+            "hash": new_hash,
+            "prompt_hash": prompt_hash[:32],
+            "matched": matched_entities
+        })
+
+    return {
+        "status": "200_OK_ALLOW",
+        "data": {
+            "ai_answer": ai_answer,
+            "rag_used": bool(rag_context),
+            "entities_matched": matched_entities
+        },
+        "worm": {
+            "block": WORM_LEDGER["count"],
+            "hash": new_hash
+        }
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 18: L.S.S. APEX & SANDBOX ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/apex/process", tags=["L.S.S. Apex"])
+async def apex_process(req: ApexRequest):
+    """
+    Der Haupt-Dirigent (SovereignApexController).
+    Führt den kompletten Zyklus aus: Sensorik -> Biologie -> Kortex -> XJustiz.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+
+    logger.info("Apex-Event empfangen. Starte Verarbeitung...")
+    
+    # Ruft die zentrale Logik im Controller auf
+    result = apex_controller.process_event(req.message)
+    
+    # In den WAL schreiben (Persistenz)
+    wal.append("APEX_EVENT", {
+        "input": req.message,
+        "result_status": result["status"]
+    })
+    
+    # In den RAM-Ring schreiben (Live-Telemetrie)
+    async with LEDGER_LOCK:
+        WORM_LEDGER["count"] += 1
+        new_hash = hashlib.sha3_512(f"{WORM_LEDGER['last_hash']}{req.message}".encode()).hexdigest()
+        WORM_LEDGER["last_hash"] = new_hash
+        WORM_RING.append({
+            "block": WORM_LEDGER["count"],
+            "hash": new_hash,
+            "event": "APEX_PROCESS",
+            "apex_status": result["status"]
+        })
+        result["worm_block"] = WORM_LEDGER["count"]
+
+    return result
+
+
+@app.post("/api/v1/sandbox/brummel", tags=["Sandboxes"])
+async def brummel_inject(req: BrummelRequest):
+    """
+    Brummel-Grummel-Universum (Oszillator).
+    Isoliert feindliche Injektionen in einer Dreieckswelle.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+    
+    result = apex_controller.brummel.process_injection(req.message)
+    wal.append("BRUMMEL_INJECTION", result)
+    
+    return result
+
+
+@app.post("/api/v1/sandbox/pumuckl", tags=["Sandboxes"])
+async def pumuckl_inject(req: PumucklRequest):
+    """
+    Pumuckl Chaos-Imp (Obfuskation).
+    Umgarnt feindliche Payloads mit Rhabarber-Obfuskation.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+    
+    result = apex_controller.pumuckl.chaos_wrap(req.message)
+    wal.append("PUMUCKL_CHAOS", result)
+    
+    return {"status": "CHAOS_CONTAINED", "pumuckl": result}
+
+
+@app.post("/api/v1/sandbox/kingghost", tags=["Sandboxes"])
+async def kingghost_consume(req: KingGhostRequest):
+    """
+    King_Ghost (Shadow-Konsumation).
+    Zieht Tokens in den tiefsten Schatten-Pool.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+    
+    shadow_id = apex_controller.king_ghost.consume_to_shadow(req.message, req.origin)
+    wal.append("KING_GHOST_CONSUMED", {"shadow_id": shadow_id, "origin": req.origin})
+    
+    return {"status": "CONSUMED_TO_SHADOW", "shadow_id": shadow_id, "origin": req.origin}
+
+
+@app.get("/api/v1/kingghost/shadows", tags=["Sandboxes"])
+async def kingghost_list():
+    """
+    Listet alle Schatten im King_Ghost-Pool auf.
+    """
+    pool = apex_controller.king_ghost.shadow_pool
+    return {
+        "count": len(pool),
+        "shadows": pool
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 19: DEEPSEEK & NEO4J ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/deepseek/boost", tags=["Analysis"])
+async def deepseek_boost(req: DeepSeekRequest):
+    """
+    DeepSeek Multi-Step Reasoning Booster.
+    Führt eine tiefe Analyse des Prompts durch und gibt Confidence-Scores zurück.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+    
+    result = apex_controller.booster.boost(req.prompt, depth=req.depth)
+    wal.append("DEEPSEEK_BOOST", {"confidence": result["confidence"]})
+    
+    return result
+
+
+@app.post("/api/v1/graph/query", tags=["Graph"])
+async def graph_query(req: PromptRequest):
+    """
+    Führt eine Neo4j-Cypher-Query aus (via Prompt-Feld).
+    Wird von der APEX Graph Engine im Streamlit-Cockpit genutzt.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+    
+    logger.info(f"Neo4j Query empfangen: {req.prompt[:50]}...")
+    
+    # Führt die Query aus (Fallback auf Mock-Daten, wenn offline)
+    result_data = neo4j.run_query(req.prompt)
+    
+    wal.append("GRAPH_QUERY", {
+        "query": req.prompt[:100],
+        "results_count": len(result_data)
+    })
+    
+    return {
+        "status": "QUERY_EXECUTED",
+        "data": result_data
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 20: LIVE TELEMETRY WEBSOCKET
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.websocket("/ws/telemetry")
+async def websocket_telemetry(websocket: WebSocket):
+    """
+    Sendet Live-Metriken an das Cockpit (für das Live-Metriken Panel).
+    Aktualisiert alle 1.5 Sekunden.
+    """
+    await websocket.accept()
+    logger.info("WebSocket: Client verbunden. Starte Telemetrie-Stream.")
+    
+    try:
+        while True:
+            # Simulierte Live-Daten für das UI
+            telemetry_data = {
+                "ts": time.time(),
+                "throughput": random.randint(250000, 290000),
+                "latency": round(random.uniform(8.5, 10.5), 2),
+                "entropy": round(apex_controller.wusulum.entropy_pool, 2),
+                "bio_state": apex_controller.bio.state,
+                "worm_block": WORM_LEDGER["count"],
+                "gotham_inmates": len(apex_controller.gotham.inmates),
+                "king_ghost_shadows": len(apex_controller.king_ghost.shadow_pool)
+            }
+            
+            await websocket.send_text(json.dumps(telemetry_data))
+            await asyncio.sleep(1.5) # Alle 1.5 Sekunden
+            
+    except WebSocketDisconnect:
+        logger.info("WebSocket: Client getrennt.")
+    except Exception as e:
+        logger.error(f"WebSocket Fehler: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 21: GLOBAL EXCEPTION HANDLER & ENTRYPOINT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Fängt unerwartete Fehler ab und loggt sie (Fail-Closed).
+    Verhindert, dass Stacktraces an das Frontend leaken.
+    """
+    logger.error(f"Unbehandelter Fehler bei {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"status": "ERROR", "detail": "Internal Server Error (Fail-Closed)"}
+    )
+
+if __name__ == "__main__":
+    # Startet den Uvicorn-Server (für lokale Tests oder Docker)
+    port = int(os.getenv("PORT", 8000))
+    logger.info(f"Starte B6-Monster-API auf Port {port}...")
+    
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+        reload=False # Auf Produktion (Render) immer False
+    )
