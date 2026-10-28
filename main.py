@@ -89,7 +89,42 @@ try:
 except ImportError:
     genai = None  # type: ignore
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# DYNAMISCHER MODUL-LOADER (Tier 1, 2, 3 wegen Bindestrichen in Ordnernamen)
+# ═══════════════════════════════════════════════════════════════════════════════
+import importlib.util
+import sys
+import os
 
+def load_custom_module(module_name: str, file_path: str):
+    if not os.path.exists(file_path):
+        print(f"⚠️ Warnung: Datei nicht gefunden -> {file_path}")
+        return None
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+# TIER 1: Governance
+tier1_apex_mod = load_custom_module("apex_controller", "agents/Tier-1-Governance/apex_controller.py")
+tier1_seal_mod = load_custom_module("seal_verifier", "agents/Tier-1-Governance/seal_verifier.py")
+SovereignApexController = getattr(tier1_apex_mod, "SovereignApexController", None) if tier1_apex_mod else None
+verify_seal = getattr(tier1_seal_mod, "verify_seal", None) if tier1_seal_mod else None
+
+# TIER 2: Security
+tier2_scan_mod = load_custom_module("grummel_scanner", "agents/Tier-2-Sicherheit/grummel_scanner.py")
+tier2_poly_mod = load_custom_module("polyvagal", "agents/Tier-2-Sicherheit/polyvagal.py")
+GrummelSignatureScanner = getattr(tier2_scan_mod, "GrummelSignatureScanner", None) if tier2_scan_mod else None
+PolyvagalStateRegulator = getattr(tier2_poly_mod, "PolyvagalStateRegulator", None) if tier2_poly_mod else None
+
+# TIER 3: Analysis
+tier3_neuro_mod = load_custom_module("neuro_sensor", "agents/Tier-3-Analyse/neuro_sensor.py")
+tier3_wus_mod = load_custom_module("wusulum", "agents/Tier-3-Analyse/wusulum.py")
+NeuroScanModul = getattr(tier3_neuro_mod, "NeuroScanModul", None) if tier3_neuro_mod else None
+WusulumCore = getattr(tier3_wus_mod, "WusulumCore", None) if tier3_wus_mod else None
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════
