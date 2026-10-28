@@ -528,5 +528,302 @@ class DeepSeekRequest(BaseRequest):
     depth: int = 3
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# [TEIL 2: FASTAPI APP, ENDPOINTS & WEBSOCKETS FOLGT]
+# 12. FASTAPI LIFESPAN & INITIALISIERUNG
 # ═══════════════════════════════════════════════════════════════════════════════
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Startet die Hintergrundprozesse (Registry-Sync) beim Hochfahren der API
+    und räumt sie beim Herunterfahren sauber auf.
+    """
+    logger.info("=" * 70)
+    logger.info("B6-MONSTER-API :: SYSTEM STARTUP")
+    logger.info(f"  Python:         {os.sys.version.split()[0]}")
+    logger.info(f"  Seal:           {EXPECTED_SEAL[:10]}... (Länge: {len(EXPECTED_SEAL)})")
+    logger.info(f"  Gemini:         {'READY' if client else 'DISABLED'}")
+    logger.info(f"  Neo4j:          {'READY' if _neo4j.driver else 'OFFLINE'}")
+    logger.info(f"  WAL-Ledger:     {WAL_PATH}")
+    logger.info("=" * 70)
+    
+    # Startet den Registry-Sync asynchron
+    task = asyncio.create_task(load_registry())
+    
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        logger.info("B6-MONSTER-API :: SHUTDOWN COMPLETE")
+
+# App-Initialisierung
+app = FastAPI(
+    title="B6 Hyperkernel Monster API",
+    version="∞",
+    description="Sovereign OS Backend mit L.S.S. Neuro-Core, Neo4j & WORM.",
+    lifespan=lifespan
+)
+
+# CORS (Erlaubt dem Streamlit-Cockpit den Zugriff)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 13. CORE & HEALTH ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root():
+    """Minimaler Live-Check für Render/Streamlit."""
+    return {
+        "status": "BLUE_CORE_LIVE",
+        "version": app.version,
+        "entities": len(BOOK_REGISTRY),
+        "worm_block": WORM_LEDGER["count"],
+        "timestamp": time.time()
+    }
+
+@app.get("/health")
+async def health():
+    """Detaillierter Health-Report für das Monitoring."""
+    uptime = int(time.time() - WORM_LEDGER["started_at"])
+    return {
+        "status": "HEALTHY",
+        "uptime_seconds": uptime,
+        "entities_loaded": len(BOOK_REGISTRY),
+        "worm_last_hash": WORM_LEDGER["last_hash"][:32] + "...",
+        "features": {
+            "gemini_rag": client is not None,
+            "neo4j_graph": _neo4j.driver is not None,
+            "lss_neuro_core": True,
+            "king_ghost_sandbox": True,
+            "deepseek_booster": True
+        }
+    }
+
+@app.get("/stats")
+async def stats():
+    """Aggregierte Statistiken über alle Subsysteme."""
+    return {
+        "registry": {
+            "entities": len(BOOK_REGISTRY),
+            "sample": list(BOOK_REGISTRY.keys())[:5]
+        },
+        "worm": {
+            "total_blocks": WORM_LEDGER["count"],
+            "ring_size": len(WORM_RING)
+        },
+        "lss": {
+            "entropy": round(_apex.wusulum.entropy_pool, 2),
+            "bio_state": _apex.bio.state,
+            "gotham_inmates": len(_apex.gotham.inmates),
+            "king_ghost_shadows": len(_apex.king_ghost.shadow_pool)
+        }
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 14. LEDGER & WAL ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+@app.get("/ledger/inspect")
+async def ledger_inspect(limit: int = 20):
+    """Zeigt die letzten X WORM-Blöcke aus dem RAM-Ring."""
+    limit = max(1, min(limit, LEDGER_RING_SIZE))
+    return {"blocks": list(WORM_RING)[-limit:], "returned": limit}
+
+@app.get("/api/v1/wal/tail")
+async def wal_tail(n: int = 20):
+    """Liest die letzten X Einträge aus dem persistierten WAL (JSONL)."""
+    return {"blocks": _wal.tail(n)}
+
+@app.post("/admin/reload-registry")
+async def reload_registry(req: BaseRequest):
+    """Erzwingt einen Neuabgleich der 201 Entitäten aus GitHub."""
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+    await load_registry()
+    return {"status": "RELOADED", "entities": len(BOOK_REGISTRY)}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 15. PROMPT & RAG ENDPOINT (Gemini)
+# ═══════════════════════════════════════════════════════════════════════════════
+@app.post("/prompt/check")
+async def check_prompt(req: PromptRequest):
+    """
+    Standard Chat/RAG Endpoint.
+    Sucht nach Entitäten im Prompt und generiert eine Antwort via Gemini.
+    """
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+
+    prompt = req.prompt
+    lowered = prompt.lower()
+    rag_context = ""
+    matched = []
+
+    # RAG-Suche
+    for bid, data in BOOK_REGISTRY.items():
+        if bid in prompt or data.get("name", "").lower() in lowered:
+            rag_context += f"Entität {bid}: {data.get('name')}. Ring: {data.get('ring')}\n"
+            matched.append(bid)
+
+    ai_answer = "Keine KI-Antwort generiert (Gemini offline oder kein Match)."
+    if client and rag_context:
+        try:
+            response = await client.aio.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=f"Daten: {rag_context}\nFrage: {prompt}"
+            )
+            ai_answer = response.text
+        except Exception as e:
+            logger.error(f"Gemini Fehler: {e}")
+            ai_answer = f"System-Fehler: {e}"
+
+    # WORM Update
+    async with _LEDGER_LOCK:
+        WORM_LEDGER["count"] += 1
+        h = hashlib.sha3_512(f"{WORM_LEDGER['last_hash']}{prompt}".encode()).hexdigest()
+        WORM_LEDGER["last_hash"] = h
+        WORM_RING.append({"block": WORM_LEDGER["count"], "hash": h, "matched": matched})
+
+    return {
+        "status": "200_OK_ALLOW",
+        "data": {
+            "ai_answer": ai_answer,
+            "rag_used": bool(rag_context),
+            "entities_matched": matched
+        },
+        "worm": {"block": WORM_LEDGER["count"], "hash": h}
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 16. L.S.S. APEX & SANDBOX ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+@app.post("/api/v1/apex/process")
+async def apex_process(req: ApexRequest):
+    """
+    Der Haupt-Dirigent (SovereignApexController).
+    Führt den kompletten Zyklus aus: Sensorik -> Biologie -> Kortex -> XJustiz.
+    """
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+
+    result = _apex.process_event(req.message)
+    
+    # In den WAL schreiben
+    _wal.append("APEX_EVENT", {"input": req.message, "result": result})
+    
+    # In den RAM-Ring schreiben
+    async with _LEDGER_LOCK:
+        WORM_LEDGER["count"] += 1
+        h = hashlib.sha3_512(f"{WORM_LEDGER['last_hash']}{req.message}".encode()).hexdigest()
+        WORM_LEDGER["last_hash"] = h
+        WORM_RING.append({"block": WORM_LEDGER["count"], "hash": h, "apex_status": result["status"]})
+        result["worm_block"] = WORM_LEDGER["count"]
+
+    return result
+
+@app.post("/api/v1/sandbox/brummel")
+async def brummel_inject(req: BrummelRequest):
+    """Brummel-Grummel-Universum (Oszillator)."""
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+    osc = _apex.brummel.oscillate()
+    res = {"status": "CONTAINED", "oscillation": osc, "hash": _h(req.message)}
+    _wal.append("BRUMMEL_INJECTION", res)
+    return res
+
+@app.post("/api/v1/sandbox/pumuckl")
+async def pumuckl_inject(req: PumucklRequest):
+    """Pumuckl Chaos-Imp (Obfuskation)."""
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+    rec = _apex.pumuckl.wrap(req.message)
+    _wal.append("PUMUCKL_CHAOS", rec)
+    return {"status": "CHAOS_CONTAINED", "pumuckl": rec}
+
+@app.post("/api/v1/sandbox/kingghost")
+async def kingghost_consume(req: KingGhostRequest):
+    """King_Ghost (Shadow-Konsumation)."""
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+    sid = _apex.king_ghost.consume(req.message, req.origin)
+    _wal.append("KING_GHOST_CONSUMED", {"sid": sid})
+    return {"status": "CONSUMED_TO_SHADOW", "shadow_id": sid}
+
+@app.get("/api/v1/kingghost/shadows")
+async def kingghost_list():
+    """Listet alle Schatten im King_Ghost-Pool auf."""
+    return {"shadows": _apex.king_ghost.shadow_pool, "count": len(_apex.king_ghost.shadow_pool)}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 17. DEEPSEEK & NEO4J ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+@app.post("/api/v1/deepseek/boost")
+async def deepseek_boost(req: DeepSeekRequest):
+    """DeepSeek Multi-Step Reasoning Booster."""
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+    result = _apex.booster.boost(req.prompt, depth=req.depth)
+    _wal.append("DEEPSEEK_BOOST", {"confidence": result["confidence"]})
+    return result
+
+@app.post("/api/v1/graph/query")
+async def graph_query(req: PromptRequest):
+    """
+    Führt eine Neo4j-Cypher-Query aus (via Prompt-Feld).
+    Wird von der APEX Graph Engine im Streamlit-Cockpit genutzt.
+    """
+    if not _verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Seal")
+    
+    result = _neo4j.run_query(req.prompt)
+    _wal.append("GRAPH_QUERY", {"query": req.prompt[:50], "results": len(result)})
+    return {"status": "QUERY_EXECUTED", "data": result}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 18. LIVE TELEMETRY WEBSOCKET
+# ═══════════════════════════════════════════════════════════════════════════════
+@app.websocket("/ws/telemetry")
+async def websocket_telemetry(websocket: WebSocket):
+    """
+    Sendet Live-Metriken an das Cockpit (für das Live-Metriken Panel).
+    """
+    await websocket.accept()
+    logger.info("WebSocket: Client verbunden.")
+    
+    try:
+        while True:
+            # Simulierte Live-Daten für das UI
+            data = {
+                "ts": time.time(),
+                "throughput": random.randint(250000, 290000),
+                "latency": round(random.uniform(8.5, 10.5), 2),
+                "entropy": round(_apex.wusulum.entropy_pool, 2),
+                "bio_state": _apex.bio.state,
+                "worm_block": WORM_LEDGER["count"],
+                "gotham": len(_apex.gotham.inmates),
+                "shadows": len(_apex.king_ghost.shadow_pool)
+            }
+            await websocket.send_text(json.dumps(data))
+            await asyncio.sleep(1.5) # Alle 1.5 Sekunden ein Update
+            
+    except WebSocketDisconnect:
+        logger.info("WebSocket: Client getrennt.")
+    except Exception as e:
+        logger.error(f"WebSocket Fehler: {e}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 19. ENTRYPOINT
+# ═══════════════════════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        log_level="info",
+        reload=False
+    )
