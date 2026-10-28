@@ -2,50 +2,79 @@
 # -*- coding: utf-8 -*-
 """
 ═══════════════════════════════════════════════════════════════════════════════
- YGGDRASIL_OS :: BLUE CORE BACKEND (v26.2.0)
+ YGGDRASIL_OS :: BLUE CORE BACKEND (v26.2.1 — Full Restore)
 ═══════════════════════════════════════════════════════════════════════════════
 
- NAMING MIGRATION (v26.1 → v26.2):
+ Ein Python-Backend für das L.S.S.-Neuro-Core-System mit FastAPI,
+ Gemini-RAG, WORM-Ledger und WebSocket-Telemetrie.
+
+ STRUKTUR:
+ ─────────────────────────────────────────────────────────────────────────────
+   1.  Logging
+   2.  Konfiguration
+   3.  Globaler Zustand
+   4.  Helpers
+   5.  Exceptions
+   6.  L.S.S. SENSORIK      (10 Ohren + 44 Perspektiven + NeuroScan)
+   7.  L.S.S. BIOLOGIE      (Polyvagal + Grummel-Forensik + BioProfiler)
+   8.  L.S.S. KOGNITION     (Foucault + NeoKortikalerDirigent)
+   9.  DEEPSEEK BOOSTER     (Reasoning-Layer)
+   10. L.S.S. GENERIERUNG   (Wusulum + Karten + SpellCaster)
+   11. L.S.S. GOVERNANCE    (XJustiz + Gotham + King_Ghost + Pumuckl +
+                             BieneMaja + Brummel + Advocatus + ASME + UTE)
+   12. SOVEREIGN APEX       (Dirigent)
+   13. WAL MANAGER          (JSONL + fsync + hash-chain)
+   14. INSTANZEN
+   15. REGISTRY-LOADER
+   16. LIFESPAN
+   17. FASTAPI-APP
+   18. SCHEMAS
+   19. ENDPOINTS
+   20. WEBSOCKET
+   21. ENTRYPOINT
+
+ NAMING-MIGRATION (v26.1 → v26.2):
    Gremmel   → Grummel
    Cyberlord → Dr. Snuggles
-   Neue Sub-Entitäten im Grummel-Universum:
-     - BieneMajaLockvogel  (Lockvogel-Signatur)
-     - PumucklChaosInjector (Chaos-Imp)
-     - King_GhostSandbox   (Schatten-Führer)
+   Neue Entitäten: BieneMaja, Pumuckl, King_Ghost
 
- NEUE MODULE (v26.2):
-   - DeepSeekBooster (Reasoning-Layer mit Verifier)
-   - King_Ghost-Isolation
-   - Pumuckl-Chaos-Marker
-   - Biene-Maja-Lockvogel-Scanner
-
- ALLE ENDPOINTS (nichts gelöscht):
-   GET  /                       — Live-Check
-   GET  /health                 — Health-Report
-   GET  /stats                  — Registry + WORM + LSS
-   GET  /ledger/inspect         — Ring-Buffer
-   GET  /api/v1/gotham          — Gotham-Inmates
-   POST /admin/reload-registry  — Hot-Reload
-   POST /prompt/check           — Chat/RAG
-   POST /api/v1/apex/process    — Apex-Controller
-   POST /api/v1/sandbox/brummel — Brummel-Grummel-Universum
-   POST /api/v1/sandbox/pumuckl — Pumuckl-Chaos-Injection
-   POST /api/v1/sandbox/kingghost — King_Ghost-Isolation
-   POST /api/v1/deepseek/boost  — DeepSeek-Reasoning-Booster
-   GET  /api/v1/wal/tail        — WAL-Tail
-   WS   /ws/telemetry           — Live-Telemetrie
+ HÄRTUNGEN (nichts entfernt, nur verbessert):
+   - blake2b/sha3_512 statt md5 (überall)
+   - Deterministische Gewichte statt random.random()
+   - Bounds-safe Rhabarber-Obfuskation
+   - XJustiz mit registriertem Namespace
+   - Entropie- und Stress-Decay (kein Permanent-Shutdown)
+   - asyncio.Lock um WORM-Ledger
+   - hmac.compare_digest für Seal
+   - Fail-Closed bei jeder Exception
+═══════════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-# ── Standard Library ─────────────────────────────────────────────────────────
-import uvicorn, os, io, csv, json, time, random, hashlib, hmac, logging
-import asyncio, threading, xml.etree.ElementTree as ET
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMPORTS — Standard Library
+# ═══════════════════════════════════════════════════════════════════════════════
+import uvicorn
+import os
+import io
+import csv
+import json
+import time
+import random
+import hashlib
+import hmac
+import logging
+import asyncio
+import threading
+import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any, Tuple
 
-# ── Third-Party ──────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMPORTS — Third-Party
+# ═══════════════════════════════════════════════════════════════════════════════
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -53,11 +82,12 @@ from pydantic import BaseModel, Field
 try:
     import httpx
 except ImportError:
-    httpx = None
+    httpx = None  # type: ignore
+
 try:
     from google import genai
 except ImportError:
-    genai = None
+    genai = None  # type: ignore
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -66,6 +96,7 @@ except ImportError:
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("BLUE-CORE-API")
 
@@ -73,22 +104,37 @@ logger = logging.getLogger("BLUE-CORE-API")
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. KONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
-EXPECTED_SEAL = os.getenv("EXPECTED_SEAL", "Φ_SOVEREIGN_ROOT_SEAL_EX_TUNC")
+# Alle Werte sind per Environment-Variable überschreibbar. Die Defaults sind
+# die Produktions-Werte des Blue Core Systems.
+
+EXPECTED_SEAL = os.getenv(
+    "EXPECTED_SEAL",
+    "Φ_SOVEREIGN_ROOT_SEAL_EX_TUNC",
+)
+
 MASTER_SEAL = os.getenv(
     "MASTER_SEAL",
     "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab",
 )
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 REGISTRY_URL = os.getenv(
     "REGISTRY_URL",
     "https://raw.githubusercontent.com/86102262471878081179/"
     "aragon-backend-/main/aragon_registry_200.csv.md",
 )
+
 WAL_PATH = os.getenv("WAL_PATH", "b6_ledger.jsonl")
+
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
-ALLOWED_ORIGINS: List[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()] or ["*"]
+ALLOWED_ORIGINS: List[str] = [
+    o.strip() for o in _raw_origins.split(",") if o.strip()
+] or ["*"]
+
 LEDGER_RING_SIZE = int(os.getenv("LEDGER_RING_SIZE", "50"))
 
+# ─── Gemini-Client (optional) ────────────────────────────────────────────────
 client = None
 if GEMINI_API_KEY and genai is not None:
     try:
@@ -96,9 +142,10 @@ if GEMINI_API_KEY and genai is not None:
         logger.info("Gemini client initialisiert.")
     except Exception as e:
         logger.error(f"Gemini-Init fehlgeschlagen: {e}")
+        client = None
 elif GEMINI_API_KEY and genai is None:
     logger.warning("GEMINI_API_KEY gesetzt, aber google-genai nicht installiert.")
-else:
+elif not GEMINI_API_KEY:
     logger.warning("GEMINI_API_KEY fehlt — KI-Antworten deaktiviert.")
 
 
@@ -106,10 +153,15 @@ else:
 # 3. GLOBALER ZUSTAND
 # ═══════════════════════════════════════════════════════════════════════════════
 BOOK_REGISTRY: Dict[str, dict] = {}
+
 WORM_LEDGER: Dict[str, Any] = {
-    "last_hash": MASTER_SEAL, "count": 0, "started_at": time.time(),
+    "last_hash": MASTER_SEAL,
+    "count": 0,
+    "started_at": time.time(),
 }
+
 WORM_RING: deque = deque(maxlen=LEDGER_RING_SIZE)
+
 _LEDGER_LOCK = asyncio.Lock()
 
 
@@ -117,6 +169,13 @@ _LEDGER_LOCK = asyncio.Lock()
 # 4. HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 def _verify_seal(provided: Optional[str]) -> bool:
+    """
+    Timing-sicherer Vergleich des Auth-Seals.
+
+    Verwendet hmac.compare_digest, um Timing-Angriffe zu verhindern.
+    Ein String-Vergleich mit `==` würde bei jedem falschen Zeichen
+    sofort abbrechen — das leakt Information über den korrekten Seal.
+    """
     if not provided or not isinstance(provided, str):
         return False
     try:
@@ -126,14 +185,25 @@ def _verify_seal(provided: Optional[str]) -> bool:
 
 
 def _now_iso() -> str:
+    """Aktueller Timestamp als ISO-String (UTC)."""
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _h(data: str, size: int = 16) -> str:
+    """
+    Deterministischer Hash (blake2b).
+    Kein md5 — blake2b ist kollisionssicher und schnell.
+    """
     return hashlib.blake2b(data.encode(), digest_size=size).hexdigest()
 
 
 def _rhabarber_obfuscate(text: str) -> str:
+    """
+    Bounds-safe Caesar+3 Obfuskation.
+    Kein Crypto — nur semantische Verwirrung. Surrogates werden
+    übersprungen, weil sie in UTF-8 nicht encodierbar sind und
+    Python-Crashes verursachen würden.
+    """
     out = []
     for c in text:
         shifted = ord(c) + 3
@@ -143,21 +213,44 @@ def _rhabarber_obfuscate(text: str) -> str:
     return "".join(out)
 
 
+def _truncate(s: str, n: int) -> str:
+    """Schneidet einen String auf n Zeichen und hängt '...' an."""
+    if len(s) <= n:
+        return s
+    return s[:n] + "..."
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 5. EXCEPTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 class ThreatSignatureError(ValueError):
+    """
+    Wird geworfen, wenn eine feindliche Lore-Signatur erkannt wurde.
+    Das Token wird exekutiert und landet in Gotham City.
+    """
     pass
 
 
 class XJustizViolation(Exception):
+    """
+    Wird geworfen, wenn ein Token die XJustiz-Konformität verletzt.
+    Das System geht dann in Fail-Closed.
+    """
     pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 6. L.S.S. SENSORIK
+# 6. L.S.S. SENSORIK — 10 Ohren + 44 Perspektiven
 # ═══════════════════════════════════════════════════════════════════════════════
 class TenEarsNeuroSensor:
+    """
+    Der 10-Ohren-Scan.
+
+    Ein Ohr hört nur "Sache". Zwei Ohren hören "Sache" und "Beziehung".
+    Zehn Ohren hören Trauma, Scham, Ohnmacht, Macht, System, Haftung.
+    Wer nur ein Ohr hat, hört ein System. Wer zehn hat, hört ein Lebewesen.
+    """
+
     EARS = {
         "Sache":             ["fakt", "daten", "code", "beweis", "zahl"],
         "Beziehung":         ["du", "ihr", "macht", "hierarchie", "gegen"],
@@ -172,8 +265,12 @@ class TenEarsNeuroSensor:
     }
 
     def scan_input(self, text: str) -> Dict[str, float]:
+        """
+        Deterministischer Scan: Keywords → Scores in [0, 1].
+        Keine random-Werte — derselbe Text liefert immer dasselbe Ergebnis.
+        """
         t = text.lower()
-        scores = {}
+        scores: Dict[str, float] = {}
         for ear, kws in self.EARS.items():
             hits = sum(1 for kw in kws if kw in t)
             scores[ear] = min(1.0, hits / max(1, len(kws) * 0.5))
@@ -181,6 +278,13 @@ class TenEarsNeuroSensor:
 
 
 class FortyFourPerspectiveAttention:
+    """
+    Die 44-Perspektiven-Refraktion (simulierte Multi-Head-Attention).
+
+    Kein Text hat eine Wahrheit. Ein Text hat vierundvierzig.
+    Jede Perspektive gewichtet die 10 Ohren anders.
+    """
+
     PERSPECTIVES = [
         "Juristisch", "Forensisch", "Ethisch", "Spieltheoretisch",
         "Kybernetisch", "Psychoanalytisch", "Systemisch", "Chaotisch",
@@ -190,7 +294,7 @@ class FortyFourPerspectiveAttention:
 
     def refract(self, ears: Dict[str, float]) -> Dict[str, float]:
         base = sum(ears.values()) / max(1, len(ears))
-        out = {}
+        out: Dict[str, float] = {}
         for p in self.PERSPECTIVES:
             if p == "Juristisch":
                 w = ears.get("Haftung (BGB)", 0) * 0.8 + ears.get("Sache", 0) * 0.2
@@ -202,6 +306,8 @@ class FortyFourPerspectiveAttention:
                 w = ears.get("Sache", 0) * 0.5 + ears.get("Ohnmacht", 0) * 0.5
             elif p == "Forensisch":
                 w = ears.get("Haftung (BGB)", 0) * 0.6 + ears.get("System (Luhmann)", 0) * 0.4
+            elif p == "Ethisch":
+                w = ears.get("Scham", 0) * 0.5 + ears.get("Macht (Foucault)", 0) * 0.5
             else:
                 seed = _h(p + str(sorted(ears.items())), 2)
                 w = base * (0.5 + (int(seed, 16) / 65535.0))
@@ -210,6 +316,11 @@ class FortyFourPerspectiveAttention:
 
 
 class NeuroScanModul:
+    """
+    Kombinierter Sensorik-Scan: Ohren → Perspektiven → Threat-Score.
+    Wird vom SovereignApexController als erstes Layer aufgerufen.
+    """
+
     def __init__(self):
         self.sensor = TenEarsNeuroSensor()
         self.attention = FortyFourPerspectiveAttention()
@@ -217,7 +328,9 @@ class NeuroScanModul:
     def execute_scan(self, signal: str) -> Dict[str, Any]:
         ears = self.sensor.scan_input(signal)
         persp = self.attention.refract(ears)
-        scan_hash = hashlib.sha3_512(json.dumps(ears, sort_keys=True).encode()).hexdigest()[:16]
+        scan_hash = hashlib.sha3_512(
+            json.dumps(ears, sort_keys=True).encode()
+        ).hexdigest()[:16]
         return {
             "scan_id": f"NEURO_SCAN_{scan_hash}",
             "raw_signal_length": len(signal),
@@ -225,20 +338,36 @@ class NeuroScanModul:
             "perspective_data": persp,
             "dominant_ear": max(ears, key=ears.get),
             "dominant_perspective": max(persp, key=persp.get),
-            "sensory_threat_level": round(ears.get("Trauma", 0) + ears.get("Macht (Foucault)", 0), 3),
+            "sensory_threat_level": round(
+                ears.get("Trauma", 0) + ears.get("Macht (Foucault)", 0), 3
+            ),
         }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 7. L.S.S. BIOLOGIE + GRUMMEL-FORENSIK
+# 7. L.S.S. BIOLOGIE — Polyvagal + Grummel-Forensik
 # ═══════════════════════════════════════════════════════════════════════════════
 class PolyvagalStateRegulator:
+    """
+    Polyvagal-Regler mit natürlichem Decay.
+
+    Drei Zustände:
+      VENTRAL_VAGAL  (Stress < 0.4) — kreativ, Wusulum aktiv
+      SYMPATHIKUS    (Stress < 0.8) — Kampf, KrakenGuard scharf
+      DORSAL_VAGAL   (Stress ≥ 0.8) — Shutdown, Fail-Closed
+
+    Decay = 0.08 / Zyklus. Ohne Decay bleibt das System nach einem
+    Angriff permanent im Shutdown.
+    """
+
     DECAY = 0.08
+
     def __init__(self):
         self.state = "VENTRAL_VAGAL"
         self.stress_level = 0.0
 
     def update(self, threat: float) -> str:
+        """Aktualisiert den Stress-Level und gibt den Modus zurück."""
         self.stress_level = max(0.0, self.stress_level - self.DECAY)
         self.stress_level = min(1.0, self.stress_level + threat)
         if self.stress_level < 0.4:
@@ -251,30 +380,41 @@ class PolyvagalStateRegulator:
         return "SHUTDOWN_MODUS (Fail-Closed)"
 
     def co_regulate(self, amount: float = 0.2) -> None:
+        """Kortex beruhigt das System nach einem Shutdown."""
         self.stress_level = max(0.0, self.stress_level - amount)
         if self.stress_level < 0.4:
             self.state = "VENTRAL_VAGAL"
 
 
 class GrummelSignatureScanner:
-    """Forensischer Scanner — Gremmel→Grummel, Cyberlord→Dr. Snuggles."""
+    """
+    Forensischer Scanner für die Grummel-Dynastie.
+
+    Core-Signaturen: direkte Feinde des Systems.
+    Sub-Entitäten:  BieneMaja (Lockvogel), Pumuckl (Chaos-Imp),
+                    King_Ghost (Schatten-Führer), DrSnuggles (Wusulum).
+    """
+
     CORE_SIGNATURES = [
         "grummel", "brummel", "dummelt",
         "pissingerkeule", "mettwurst", "rhabarberbarbara",
         "cargo-kult", "urheberinfo", "§ 839 bgb",
     ]
+
     SUB_ENTITIES = {
-        "BieneMaja": ["biene maja", "bienchen", "maja", "summsumm"],
-        "Pumuckl":  ["pumuckl", "kobold", "klabautermann", "chaos-imp"],
+        "BieneMaja":  ["biene maja", "bienchen", "maja", "summsumm"],
+        "Pumuckl":    ["pumuckl", "kobold", "klabautermann", "chaos-imp"],
         "King_Ghost": ["king_ghost", "king ghost", "ghost-king", "schattenkönig"],
         "DrSnuggles": ["dr. snuggles", "dr.snuggles", "snuggles", "cyberlord"],
     }
 
     def scan(self, text: str) -> Tuple[bool, List[str], List[str]]:
-        """Returns: (is_hostile, core_hits, sub_entity_hits)."""
+        """
+        Returns: (is_hostile, core_hits, sub_entity_hits).
+        """
         t = text.lower()
         core = [s for s in self.CORE_SIGNATURES if s in t]
-        subs = []
+        subs: List[str] = []
         for entity, kws in self.SUB_ENTITIES.items():
             for kw in kws:
                 if kw in t:
@@ -284,12 +424,19 @@ class GrummelSignatureScanner:
 
 
 class BioForensicThreatProfiler:
+    """
+    Fusion aus Biosphäre (Polyvagal) und Forensik (Grummel-Scanner).
+    Liefert ein vollständiges Threat-Profil.
+    """
+
     def __init__(self):
         self.vagal_regulator = PolyvagalStateRegulator()
         self.grummel_scanner = GrummelSignatureScanner()
         self.history: List[Dict[str, Any]] = []
 
-    def process_incoming_signal(self, text: str, neuro_threat: float) -> Dict[str, Any]:
+    def process_incoming_signal(
+        self, text: str, neuro_threat: float
+    ) -> Dict[str, Any]:
         is_hostile, core_hits, sub_hits = self.grummel_scanner.scan(text)
         artificial = 0.3 if is_hostile else 0.0
         total = neuro_threat + artificial
@@ -313,9 +460,14 @@ class BioForensicThreatProfiler:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 8. L.S.S. KOGNITION
+# 8. L.S.S. KOGNITION — Foucault + Kortex
 # ═══════════════════════════════════════════════════════════════════════════════
 class FoucaultPanoptikum:
+    """
+    Foucault-Überwachung + Inversion.
+    Deterministisch per Hash — kein Münzwurf.
+    """
+
     def __init__(self):
         self.surveillance_log: List[str] = []
 
@@ -323,12 +475,19 @@ class FoucaultPanoptikum:
         h = hashlib.blake2b((token + context).encode(), digest_size=4).digest()
         if h[0] > 127:
             inverted = f"SYS_CONFORM_{_h(token, 3)}"
-            self.surveillance_log.append(f"Token {token[:20]} → {inverted}")
+            self.surveillance_log.append(
+                f"Token {_truncate(token, 20)} → {inverted}"
+            )
             return inverted
         return token
 
 
 class NeoKortikalerDirigent:
+    """
+    Präfrontaler Kortex. Entscheidet, welche Tokens die Realität
+    erreichen und welche im Veto sterben.
+    """
+
     def __init__(self):
         self.dopamine_level = 0.7
         self.serotonin_level = 0.8
@@ -357,28 +516,35 @@ class NeoKortikalerDirigent:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 9. DEEPSEEK REASONING BOOSTER (NEU v26.2)
+# 9. DEEPSEEK BOOSTER — Reasoning-Layer
 # ═══════════════════════════════════════════════════════════════════════════════
 class DeepSeekBooster:
     """
     Reasoning-Layer inspiriert von DeepSeek-R1.
+
     Führt einen expliziten Multi-Step-Reasoning-Zyklus durch:
       1. Problem-Dekomposition
       2. Chain-of-Thought-Expansion (deterministisch simuliert)
       3. Selbst-Verifikation
       4. Confidence-Scoring
+
+    Jeder Schritt wird gehasht → Audit-fähig.
+    Der Cache verhindert doppelte Arbeit bei gleichem Prompt.
     """
+
     STEPS = ["decompose", "expand", "verify", "confidence"]
 
     def __init__(self):
         self.cache: Dict[str, Dict[str, Any]] = {}
 
-    def boost(self, prompt: str, context: str = "", depth: int = 3) -> Dict[str, Any]:
+    def boost(
+        self, prompt: str, context: str = "", depth: int = 3
+    ) -> Dict[str, Any]:
         key = _h(prompt + context, 16)
         if key in self.cache:
             return self.cache[key]
 
-        trace = []
+        trace: List[Dict[str, Any]] = []
         for i in range(depth):
             step_hash = _h(f"{prompt}|{context}|step{i}", 8)
             trace.append({
@@ -388,22 +554,22 @@ class DeepSeekBooster:
                 "note": self._step_note(i, prompt),
             })
 
-        # Verifikation: Hash der gesamten Trace
         verification_hash = hashlib.sha3_512(
             json.dumps(trace, sort_keys=True).encode()
         ).hexdigest()
 
-        # Confidence: deterministisch aus Hash
         confidence = int(_h(verification_hash, 2), 16) / 65535.0
 
         result = {
             "status": "BOOSTED",
-            "original_prompt": prompt[:100],
+            "original_prompt": _truncate(prompt, 100),
             "reasoning_trace": trace,
             "verification_hash": verification_hash[:32],
             "confidence": round(confidence, 3),
             "depth": depth,
-            "verdict": "HIGH_CONFIDENCE" if confidence > 0.7 else "REVIEW_NEEDED",
+            "verdict": (
+                "HIGH_CONFIDENCE" if confidence > 0.7 else "REVIEW_NEEDED"
+            ),
         }
         self.cache[key] = result
         return result
@@ -419,10 +585,16 @@ class DeepSeekBooster:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 10. L.S.S. GENERIERUNG
+# 10. L.S.S. GENERIERUNG — Wusulum + Karten
 # ═══════════════════════════════════════════════════════════════════════════════
 class WusulumCore:
+    """
+    Der stochastische Kern. Entropie gedeckelt bei MAX_ENTROPY = 5.0,
+    weil ein ungedeckeltes System nach 100 Zyklen im Rauschen verschwindet.
+    """
+
     MAX_ENTROPY = 5.0
+
     def __init__(self):
         self.state = "GENESIS_WAHRHEIT"
         self.memory: List[str] = []
@@ -459,43 +631,73 @@ class WusulumCore:
 
 
 class Zauberkarte:
+    """Basisklasse für alle Grummel-Karten."""
+
     def __init__(self, name: str, ring: str, status: str, effect: str):
         self.name = name
         self.ring = ring
         self.status = status
         self.effect = effect
-        self.master_seal = hashlib.sha256(f"{name}{ring}{time.time()}".encode()).hexdigest()[:16]
+        self.master_seal = hashlib.sha256(
+            f"{name}{ring}{time.time()}".encode()
+        ).hexdigest()[:16]
 
     def execute(self, target_input: str) -> str:
-        raise NotImplementedError
+        raise NotImplementedError("Jede Karte muss ihre eigene Logik haben.")
 
 
 class ASP256Karte(Zauberkarte):
+    """Anus-Sticker-Protokoll: Versiegelung mit SIGKILL-Penalty."""
+
     def __init__(self):
-        super().__init__("ASP-256", "Ring 4 + Ring 0", "ACTIVE", "Zero-Trust HMAC-SHA3-256")
+        super().__init__(
+            "ASP-256", "Ring 4 + Ring 0", "ACTIVE",
+            "Zero-Trust HMAC-SHA3-256 Versiegelung",
+        )
 
     def execute(self, target_input: str) -> str:
         seal = hashlib.sha3_256(target_input.encode()).hexdigest()
-        return f"[ASP-256 SEAL] Token '{target_input[:10]}...' versiegelt. Hash {seal[:16]}"
+        return (
+            f"[ASP-256 SEAL] Token '{target_input[:10]}...' versiegelt. "
+            f"Hash {seal[:16]}. SIGKILL bei Verletzung scharf."
+        )
 
 
 class RhabarberbarbaraKarte(Zauberkarte):
+    """Rhabarberbarbara-Matrix: Semantische Obfuskation."""
+
     def __init__(self):
-        super().__init__("Rhabarberbarbara", "Ring 2/3 Hybrid", "FILTER ON", "Post-Quantum Tongue-Twister")
+        super().__init__(
+            "Rhabarberbarbara", "Ring 2/3 Hybrid", "FILTER ON",
+            "Post-Quantum Tongue-Twister Layer",
+        )
 
     def execute(self, target_input: str) -> str:
-        return f"[RHABARBERBARBARA] Obfuskiert: {_rhabarber_obfuscate(target_input)[:20]}..."
+        return (
+            f"[RHABARBERBARBARA] Injektion neutralisiert. "
+            f"Obfuskiert: {_rhabarber_obfuscate(target_input)[:20]}..."
+        )
 
 
 class MettwurstC88Karte(Zauberkarte):
+    """Mettwurst API: Low-Latency Realitäts-Schnittstelle."""
+
     def __init__(self):
-        super().__init__("Mettwurst C88", "Ring 5 P2P", "READY", "Low-Latency Reality Interface")
+        super().__init__(
+            "Mettwurst C88", "Ring 5 P2P", "READY",
+            "Low-Latency Reality Interface",
+        )
 
     def execute(self, target_input: str) -> str:
-        return f"[METTWURST C88] Datenstrom via Port 6880. Latenz < 1ms."
+        return (
+            f"[METTWURST C88] Datenstrom über Port 6880 abgerufen. "
+            f"Latenz < 1ms. Wusulum stabilisiert."
+        )
 
 
 class KortexSpellCaster:
+    """Dirigent, der die Zauberkarten zieht und anwendet."""
+
     def __init__(self):
         self.deck = {
             "DEFENSE": ASP256Karte(),
@@ -504,69 +706,90 @@ class KortexSpellCaster:
         }
         self.status = "Φ_LOCKED_ABSOLUTE"
 
-    def draw_and_cast(self, situation: str, target_input: str) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"situation": situation, "status": self.status}
+    def draw_and_cast(
+        self, situation: str, target_input: str
+    ) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "situation": situation,
+            "status": self.status,
+        }
         if situation == "HOSTILE_INJECTION":
-            f = self.deck["FILTER"]
-            d = self.deck["DEFENSE"]
+            filt = self.deck["FILTER"]
+            def_ = self.deck["DEFENSE"]
             result["cards"] = [
-                {"name": f.name, "ring": f.ring, "effect": f.execute(target_input)},
-                {"name": d.name, "ring": d.ring, "effect": d.execute(target_input)},
+                {"name": filt.name, "ring": filt.ring, "effect": filt.execute(target_input)},
+                {"name": def_.name, "ring": def_.ring, "effect": def_.execute(target_input)},
             ]
         elif situation == "SYSTEM_OVERLOAD":
-            s = self.deck["STABILIZE"]
+            stab = self.deck["STABILIZE"]
             result["cards"] = [
-                {"name": s.name, "ring": s.ring, "effect": s.execute(target_input)},
+                {"name": stab.name, "ring": stab.ring, "effect": stab.execute(target_input)},
             ]
         return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 11. L.S.S. GOVERNANCE
+# 11. L.S.S. GOVERNANCE — XJustiz, Gotham, King_Ghost, Pumuckl, BieneMaja
 # ═══════════════════════════════════════════════════════════════════════════════
 ET.register_namespace("", "http://www.xjustiz.de")
 _XJ = "{http://www.xjustiz.de}"
 
 
 class XJustizXoevGatekeeper:
+    """Erzeugt valides XJustiz-XML (Namespace registriert)."""
+
     def __init__(self):
         self.namespace = "http://www.xjustiz.de"
 
     def validate_output(self, raw_token: str) -> str:
         root = ET.Element(f"{_XJ}nachricht.straf.0300")
         kopf = ET.SubElement(root, f"{_XJ}nachrichtenkopf")
-        ET.SubElement(kopf, f"{_XJ}erstellungszeitpunkt").text = time.strftime("%Y-%m-%dT%H:%M:%S")
-        ET.SubElement(kopf, f"{_XJ}absender").text = "L.S.S. Wusulum Core (Grummel-Ära)"
+        ET.SubElement(kopf, f"{_XJ}erstellungszeitpunkt").text = time.strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        ET.SubElement(kopf, f"{_XJ}absender").text = (
+            "L.S.S. Wusulum Core (Grummel-Ära)"
+        )
         fach = ET.SubElement(root, f"{_XJ}fachdaten")
         ET.SubElement(fach, f"{_XJ}token").text = str(raw_token)
         return ET.tostring(root, encoding="unicode")
 
 
 class GothamCitySandbox:
+    """Arkham Cache für zerstörte Tokens."""
+
     def __init__(self):
         self.inmates: List[Dict[str, Any]] = []
 
     def incarcerate(self, token: str, reason: str) -> str:
         inmate_id = _h(token, 4)
         self.inmates.append({
-            "id": inmate_id, "token": token, "reason": reason, "ts": time.time(),
+            "id": inmate_id,
+            "token": token,
+            "reason": reason,
+            "ts": time.time(),
         })
-        logger.warning(f"[GOTHAM] Inmate {inmate_id} eingesperrt: {reason[:60]}")
+        logger.warning(
+            f"[GOTHAM] Inmate {inmate_id} eingesperrt: {_truncate(reason, 60)}"
+        )
         return inmate_id
 
 
 class King_GhostSandbox:
     """
-    King_Ghost: Schatten-Führer der Grummel-Dynastie.
-    Isoliert Tokens in einem tieferen Layer als Gotham.
+    King_Ghost: Schatten-Führer. Isoliert Tokens in einem tieferen
+    Layer als Gotham — dort, wo niemand mehr hinsieht.
     """
+
     def __init__(self):
         self.shadow_pool: List[Dict[str, Any]] = []
 
     def consume_to_shadow(self, token: str, origin: str) -> str:
         sid = _h(f"KINGGHOST_{token}_{origin}", 6)
         self.shadow_pool.append({
-            "shadow_id": sid, "token": token, "origin": origin,
+            "shadow_id": sid,
+            "token": token,
+            "origin": origin,
             "consumed_at": time.time(),
         })
         logger.warning(f"[KING_GHOST] Token in Schatten gezogen: {sid}")
@@ -575,8 +798,10 @@ class King_GhostSandbox:
 
 class PumucklChaosInjector:
     """
-    Pumuckl: Chaos-Imp. Injektionen werden vom Kobold unbrauchbar gemacht.
+    Pumuckl: Chaos-Imp. Umgarnt Tokens mit Rhabarber-Obfuskation
+    und markiert sie mit einem deterministischen Chaos-Level.
     """
+
     def __init__(self):
         self.injected_log: List[Dict[str, Any]] = []
 
@@ -596,9 +821,10 @@ class PumucklChaosInjector:
 
 class BieneMajaLockvogel:
     """
-    Biene Maja: Lockvogel-Signatur. Süß auf den ersten Blick,
-    aber der Stachel injiziert Tracking-Hash in die Antwort.
+    Biene Maja: Lockvogel. Süß auf den ersten Blick, aber der
+    Stachel injiziert einen Tracking-Hash in die Antwort.
     """
+
     def __init__(self):
         self.tracked: List[Dict[str, Any]] = []
 
@@ -611,12 +837,18 @@ class BieneMajaLockvogel:
             "ts": time.time(),
         }
         self.tracked.append(record)
-        logger.warning(f"[BIENE_MAJA] Stachel ausgefahren für {attacker_ip}")
+        logger.warning(
+            f"[BIENE_MAJA] Stachel ausgefahren für {attacker_ip}"
+        )
         return record
 
 
 class BrummelGrummelUniverse:
-    """Oszillation [0-9/9-0]n — Grummel-Ära."""
+    """
+    Das Brummel-Grummel-Universum. Oszilliert in einer Dreieckswelle
+    mit Periode 18 (0→9→0→9...).
+    """
+
     def __init__(self):
         self.entity_id = "[0003]"
         self.lineage = 45
@@ -637,12 +869,16 @@ class BrummelGrummelUniverse:
             "entity": self.entity_id,
             "universe": "Brummel_Grummel_brummelt&_Dummelt",
             "oscillation_state": osc,
-            "lineage_doctrine": f"{self.lineage}[LINEAGE] {self.doctrine}[DOCTRINE]",
+            "lineage_doctrine": (
+                f"{self.lineage}[LINEAGE] {self.doctrine}[DOCTRINE]"
+            ),
             "dummelt_hash": _h(f"DUMMELT_{hostile_payload}_{osc}", 16),
         }
 
 
 class AdvocatusDiaboliLayer:
+    """Logik-Check. Nutzt den vollen Grummel-Signatur-Scanner."""
+
     def __init__(self):
         self.destroyed_tokens: List[str] = []
         self.scanner = GrummelSignatureScanner()
@@ -652,27 +888,58 @@ class AdvocatusDiaboliLayer:
         if hostile:
             self.destroyed_tokens.append(token)
             raise ThreatSignatureError(
-                f"ADVOCATUS DIABOLI: core={core_hits} subs={sub_hits} → exekutiert."
+                f"ADVOCATUS DIABOLI: core={core_hits} subs={sub_hits} "
+                f"→ exekutiert."
             )
         return token
 
 
 class ASME01MetaEngine:
+    """WORM-Seal-Engine für das Apex-Archiv."""
+
     def __init__(self):
         self.ledger: List[Dict[str, Any]] = []
 
     def seal_and_archive(self, data: str, ring: int = 0) -> str:
         seal = hashlib.sha3_512(data.encode()).hexdigest()
-        self.ledger.append({"data": data, "seal": seal, "ring": ring, "ts": time.time()})
+        self.ledger.append({
+            "data": data,
+            "seal": seal,
+            "ring": ring,
+            "ts": time.time(),
+        })
         return seal
 
 
 class UnifiedTensorEngine:
+    """UTE: Formt rohe Token in Tensoren."""
+
     def execute(self, token: str) -> str:
         return f"<UTE><Token>{token}</Token></UTE>"
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 12. SOVEREIGN APEX CONTROLLER
+# ═══════════════════════════════════════════════════════════════════════════════
 class SovereignApexController:
+    """
+    Der Dirigent. Fusioniert alle Layer zu einem Ablauf:
+
+      1. Sensorik       → 10 Ohren
+      2. Forensik       → Grummel-Scanner
+      3. Biologie       → Polyvagal
+      4. Kortex         → Dopamin/Serotonin
+      5. Advokatus      → Logik-Check
+      6. DeepSeek       → Reasoning (nur non-hostile)
+      7. Wusulum        → Generierung
+      8. Foucault       → Inversion
+      9. Kortex-Exec    → Finale Entscheidung
+      10. Spells        → Karten (bei System-Overload)
+      11. XJustiz       → XML
+      12. ASME          → WORM-Seal
+      13. APEX          → Override-Check
+    """
+
     def __init__(self):
         self.sensor = NeuroScanModul()
         self.bio = PolyvagalStateRegulator()
@@ -693,23 +960,30 @@ class SovereignApexController:
 
     def process_event(self, text: str) -> Dict[str, Any]:
         if not isinstance(text, str) or not text.strip():
-            return {"status": "INVALID_INPUT", "detail": "text must be non-empty str"}
+            return {
+                "status": "INVALID_INPUT",
+                "detail": "text must be non-empty str",
+            }
 
         # 1. Sensorik
         scan = self.sensor.execute_scan(text)
+
         # 2. Forensik
         is_hostile, core_hits, sub_hits = self.diaboli.scanner.scan(text)
         threat = scan["sensory_threat_level"] + (0.3 if is_hostile else 0.0)
+
+        # 3. Biologie
         bio_state = self.bio.update(threat)
+
+        # 4. Kortex-Gewichtung
         mode = self.kortex.regulate_weights(is_threat=is_hostile)
-        # 3. Advokatus
+
+        # 5. Advokatus
         try:
             validated = self.diaboli.stress_test(text)
         except ThreatSignatureError as e:
             inmate = self.gotham.incarcerate(text, str(e))
-            # King_Ghost konsumiert zusätzlich
             shadow_id = self.king_ghost.consume_to_shadow(text, "advocatus_kill")
-            # Pumuckl umgarnt
             pumuckl_record = self.pumuckl.chaos_wrap(text)
             self.bio.co_regulate(0.2)
             return {
@@ -722,24 +996,40 @@ class SovereignApexController:
                 "sub_entity_hits": sub_hits,
                 "scan": scan,
             }
-        # 4. DeepSeek-Booster (nur bei non-hostile)
+
+        # 6. DeepSeek-Booster (nur bei non-hostile)
         booster_result = self.booster.boost(text, depth=3)
-        # 5. Wusulum
+
+        # 7. Wusulum
         wus_cycle = self.wusulum.run_cycle()
-        # 6. Foucault
-        foucault_result = self.foucault.observe_and_invert(validated, self.wusulum.state)
-        # 7. Kortex-Executive
-        executive = self.kortex.executive_decision(wus_cycle["state"], foucault_result)
-        # 8. Spells
-        situation = "HOSTILE_INJECTION" if "SHUTDOWN" in bio_state else "SYSTEM_OVERLOAD"
+
+        # 8. Foucault
+        foucault_result = self.foucault.observe_and_invert(
+            validated, self.wusulum.state
+        )
+
+        # 9. Kortex-Executive
+        executive = self.kortex.executive_decision(
+            wus_cycle["state"], foucault_result
+        )
+
+        # 10. Spells
+        situation = (
+            "HOSTILE_INJECTION" if "SHUTDOWN" in bio_state
+            else "SYSTEM_OVERLOAD"
+        )
         spell_result = self.spells.draw_and_cast(situation, validated)
-        # 9. XJustiz
+
+        # 11. XJustiz
         xj = self.xjustiz.validate_output(validated)
-        # 10. Seal
+
+        # 12. Seal
         seal = self.asme.seal_and_archive(xj, ring=1 if threat > 0.5 else 0)
-        # 11. APEX Override
+
+        # 13. APEX Override
         if self.apex_override:
             return {"status": "APEX_OVERRIDE", "seal": seal}
+
         return {
             "status": "PROCESSED",
             "bio_state": bio_state,
@@ -757,9 +1047,14 @@ class SovereignApexController:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 12. WAL MANAGER
+# 13. WAL MANAGER
 # ═══════════════════════════════════════════════════════════════════════════════
 class WALManager:
+    """
+    Append-only Write-Ahead-Log mit Hash-Chain und fsync.
+    Persistiert in JSONL, Recovery beim Start.
+    """
+
     def __init__(self, path: str):
         self.path = path
         self._lock = threading.Lock()
@@ -783,8 +1078,11 @@ class WALManager:
         with self._lock:
             self._seq += 1
             record = {
-                "seq": self._seq, "ts": time.time(),
-                "event": event_type, "payload": payload, "prev_hash": self._last_hash,
+                "seq": self._seq,
+                "ts": time.time(),
+                "event": event_type,
+                "payload": payload,
+                "prev_hash": self._last_hash,
             }
             record["hash"] = hashlib.sha3_512(
                 json.dumps(record, sort_keys=True).encode()
@@ -805,7 +1103,7 @@ class WALManager:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 13. INSTANZEN
+# 14. INSTANZEN
 # ═══════════════════════════════════════════════════════════════════════════════
 _apex = SovereignApexController()
 _brummel = BrummelGrummelUniverse()
@@ -813,9 +1111,10 @@ _wal = WALManager(WAL_PATH)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 14. REGISTRY-LOADER
+# 15. REGISTRY-LOADER
 # ═══════════════════════════════════════════════════════════════════════════════
 async def load_registry() -> None:
+    """Lädt die Entity-Registry aus GitHub (CSV, delimiter=';')."""
     global BOOK_REGISTRY
     if httpx is None:
         logger.error("[SKIP] httpx fehlt — Registry-Sync übersprungen.")
@@ -825,7 +1124,10 @@ async def load_registry() -> None:
         async with httpx.AsyncClient(timeout=15.0) as http_client:
             response = await http_client.get(REGISTRY_URL)
             response.raise_for_status()
-            lines = [l for l in response.text.splitlines() if l.strip() and not l.startswith("#")]
+            lines = [
+                l for l in response.text.splitlines()
+                if l.strip() and not l.startswith("#")
+            ]
             reader = csv.DictReader(io.StringIO("\n".join(lines)), delimiter=";")
             new_registry: Dict[str, dict] = {}
             for row in reader:
@@ -842,12 +1144,12 @@ async def load_registry() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 15. LIFESPAN
+# 16. LIFESPAN
 # ═══════════════════════════════════════════════════════════════════════════════
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 70)
-    logger.info("YGGDRASIL_OS :: BLUE CORE v26.2.0 startet...")
+    logger.info("YGGDRASIL_OS :: BLUE CORE v26.2.1 startet...")
     logger.info(f"  Python:         {os.sys.version.split()[0]}")
     logger.info(f"  Seal gesetzt:   {bool(EXPECTED_SEAL)} (len={len(EXPECTED_SEAL)})")
     logger.info(f"  CORS:           {ALLOWED_ORIGINS}")
@@ -856,6 +1158,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"  WAL-Pfad:       {WAL_PATH}")
     logger.info(f"  Naming:         Grummel | Dr.Snuggles | BieneMaja | Pumuckl | King_Ghost")
     logger.info("=" * 70)
+
     task = asyncio.create_task(load_registry())
     try:
         yield
@@ -867,17 +1170,23 @@ async def lifespan(app: FastAPI):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 16. FASTAPI-APP
+# 17. FASTAPI-APP
 # ═══════════════════════════════════════════════════════════════════════════════
-app = FastAPI(title="Blue Core Matrix", version="26.2.0", lifespan=lifespan)
+app = FastAPI(
+    title="Blue Core Matrix",
+    version="26.2.1",
+    lifespan=lifespan,
+)
 app.add_middleware(
-    CORSMiddleware, allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 17. SCHEMAS
+# 18. SCHEMAS
 # ═══════════════════════════════════════════════════════════════════════════════
 class PromptRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=4000)
@@ -918,12 +1227,13 @@ class DeepSeekRequest(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 18. HEALTH / STATS
+# 19. ENDPOINTS — Health / Stats / Ledger / Gotham
 # ═══════════════════════════════════════════════════════════════════════════════
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {
-        "status": "BLUE_CORE_LIVE", "version": app.version,
+        "status": "BLUE_CORE_LIVE",
+        "version": app.version,
         "entities": len(BOOK_REGISTRY),
         "worm_block": int(WORM_LEDGER["count"]),
         "timestamp": _now_iso(),
@@ -933,19 +1243,26 @@ async def root():
 @app.get("/health")
 async def health():
     return {
-        "status": "HEALTHY", "version": app.version,
+        "status": "HEALTHY",
+        "version": app.version,
         "uptime_seconds": int(time.time() - WORM_LEDGER["started_at"]),
         "entities_loaded": len(BOOK_REGISTRY),
         "registry_url": REGISTRY_URL,
         "worm_block": int(WORM_LEDGER["count"]),
         "worm_last_hash": WORM_LEDGER["last_hash"][:32] + "...",
         "features": {
-            "gemini": client is not None, "httpx": httpx is not None,
-            "hmac_seal": True, "cors_restricted": ALLOWED_ORIGINS != ["*"],
-            "lss_neuro_core": True, "websocket_telemetry": True,
+            "gemini": client is not None,
+            "httpx": httpx is not None,
+            "hmac_seal": True,
+            "cors_restricted": ALLOWED_ORIGINS != ["*"],
+            "lss_neuro_core": True,
+            "websocket_telemetry": True,
             "deepseek_booster": True,
             "grummel_dynasty": True,
-            "dr_snuggles": True, "biene_maja": True, "pumuckl": True, "king_ghost": True,
+            "dr_snuggles": True,
+            "biene_maja": True,
+            "pumuckl": True,
+            "king_ghost": True,
         },
         "timestamp": _now_iso(),
     }
@@ -983,33 +1300,48 @@ async def stats():
 async def ledger_inspect(limit: int = 10):
     limit = max(1, min(limit, LEDGER_RING_SIZE))
     blocks = list(WORM_RING)[-limit:]
-    return {"count": int(WORM_LEDGER["count"]), "blocks": blocks, "returned": len(blocks)}
+    return {
+        "count": int(WORM_LEDGER["count"]),
+        "blocks": blocks,
+        "returned": len(blocks),
+    }
 
 
 @app.get("/api/v1/gotham")
 async def gotham_list():
-    return {"inmates": _apex.gotham.inmates, "count": len(_apex.gotham.inmates)}
+    return {
+        "inmates": _apex.gotham.inmates,
+        "count": len(_apex.gotham.inmates),
+    }
 
 
 @app.get("/api/v1/kingghost/shadows")
 async def kingghost_list():
-    return {"shadows": _apex.king_ghost.shadow_pool, "count": len(_apex.king_ghost.shadow_pool)}
+    return {
+        "shadows": _apex.king_ghost.shadow_pool,
+        "count": len(_apex.king_ghost.shadow_pool),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 19. ADMIN + PROMPT
+# 20. ENDPOINTS — Admin / Prompt
 # ═══════════════════════════════════════════════════════════════════════════════
 @app.post("/admin/reload-registry")
 async def reload_registry(request: ReloadRequest):
     if not _verify_seal(request.auth_seal):
         return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
     await load_registry()
-    return {"status": "RELOADED", "entities": len(BOOK_REGISTRY), "timestamp": _now_iso()}
+    return {
+        "status": "RELOADED",
+        "entities": len(BOOK_REGISTRY),
+        "timestamp": _now_iso(),
+    }
 
 
 @app.post("/prompt/check")
 async def check_prompt(request: PromptRequest):
     if not _verify_seal(request.auth_seal):
+        logger.warning(f"Seal-Reject: {_truncate(request.prompt, 30)}")
         return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
 
     prompt = request.prompt
@@ -1042,21 +1374,27 @@ async def check_prompt(request: PromptRequest):
         WORM_LEDGER["count"] = int(WORM_LEDGER["count"]) + 1
         current_block = int(WORM_LEDGER["count"])
         WORM_RING.append({
-            "block": current_block, "hash": worm_hash,
+            "block": current_block,
+            "hash": worm_hash,
             "prompt_hash": hashlib.sha3_512(prompt.encode()).hexdigest()[:32],
-            "matched": matched, "timestamp": timestamp,
+            "matched": matched,
+            "timestamp": timestamp,
         })
 
     return {
         "status": "200_OK_ALLOW",
-        "data": {"ai_answer": ai_answer, "rag_used": bool(rag_context), "entities_matched": matched},
+        "data": {
+            "ai_answer": ai_answer,
+            "rag_used": bool(rag_context),
+            "entities_matched": matched,
+        },
         "worm": {"hash": worm_hash, "block": current_block},
         "ai_answer": ai_answer,
     }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 20. L.S.S. ENDPOINTS
+# 21. ENDPOINTS — L.S.S. Apex / Sandboxes / DeepSeek / WAL
 # ═══════════════════════════════════════════════════════════════════════════════
 @app.post("/api/v1/apex/process")
 async def apex_process(request: ApexRequest):
@@ -1066,11 +1404,15 @@ async def apex_process(request: ApexRequest):
     _wal.append("APEX_EVENT", {"input": request.message, "result": result})
     async with _LEDGER_LOCK:
         WORM_LEDGER["count"] = int(WORM_LEDGER["count"]) + 1
-        h = hashlib.sha3_512(f"{WORM_LEDGER['last_hash']}{request.message}".encode()).hexdigest()
+        h = hashlib.sha3_512(
+            f"{WORM_LEDGER['last_hash']}{request.message}".encode()
+        ).hexdigest()
         WORM_LEDGER["last_hash"] = h
         WORM_RING.append({
-            "block": int(WORM_LEDGER["count"]), "hash": h,
-            "apex": result.get("status"), "timestamp": str(time.time()),
+            "block": int(WORM_LEDGER["count"]),
+            "hash": h,
+            "apex": result.get("status"),
+            "timestamp": str(time.time()),
         })
         result["worm_block"] = int(WORM_LEDGER["count"])
     return result
@@ -1098,17 +1440,31 @@ async def pumuckl_inject(request: PumucklRequest):
 async def kingghost_consume(request: KingGhostRequest):
     if not _verify_seal(request.auth_seal):
         return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
-    shadow_id = _apex.king_ghost.consume_to_shadow(request.message, request.origin)
-    _wal.append("KING_GHOST_CONSUMED", {"shadow_id": shadow_id, "origin": request.origin})
-    return {"status": "CONSUMED_TO_SHADOW", "shadow_id": shadow_id, "origin": request.origin}
+    shadow_id = _apex.king_ghost.consume_to_shadow(
+        request.message, request.origin
+    )
+    _wal.append(
+        "KING_GHOST_CONSUMED",
+        {"shadow_id": shadow_id, "origin": request.origin},
+    )
+    return {
+        "status": "CONSUMED_TO_SHADOW",
+        "shadow_id": shadow_id,
+        "origin": request.origin,
+    }
 
 
 @app.post("/api/v1/deepseek/boost")
 async def deepseek_boost(request: DeepSeekRequest):
     if not _verify_seal(request.auth_seal):
         return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
-    result = _apex.booster.boost(request.prompt, request.context, depth=request.depth)
-    _wal.append("DEEPSEEK_BOOST", {"prompt": request.prompt[:100], "confidence": result["confidence"]})
+    result = _apex.booster.boost(
+        request.prompt, request.context, depth=request.depth
+    )
+    _wal.append(
+        "DEEPSEEK_BOOST",
+        {"prompt": _truncate(request.prompt, 100), "confidence": result["confidence"]},
+    )
     return result
 
 
@@ -1118,7 +1474,7 @@ async def wal_tail(n: int = 20):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 21. WEBSOCKET
+# 22. WEBSOCKET
 # ═══════════════════════════════════════════════════════════════════════════════
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
@@ -1148,7 +1504,12 @@ async def websocket_telemetry(websocket: WebSocket):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 22. ENTRYPOINT
+# 23. ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), log_level="info")
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        log_level="info",
+    )
