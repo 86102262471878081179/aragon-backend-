@@ -467,3 +467,347 @@ class DeepSeekBooster:
             "Confidence: Bewerte Verlässlichkeit des Resultats."
         ]
         return notes[idx % len(notes)]
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 11: L.S.S. GOVERNANCE & SANDBOXES (TIER 1 & TIER 2)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Registriert den XJustiz-Namespace global für das XML-Parsing
+ET.register_namespace("", "http://www.xjustiz.de")
+XJ_NS = "{http://www.xjustiz.de}"
+
+class GothamCitySandbox:
+    """
+    Die Gotham City Sandbox ist der Arkham-Cache für zerstörte Tokens.
+    Jedes feindliche Token, das den Advocatus Diaboli nicht passiert,
+    landet hier mit einer eindeutigen ID und einem Zeitstempel.
+    """
+    def __init__(self):
+        self.inmates: List[Dict[str, Any]] = []
+        logger.info("Gotham City Sandbox initialisiert (Status: ARKHAM_CACHE_READY).")
+
+    def incarcerate(self, token: str, reason: str) -> str:
+        """Sperrt ein Token in Gotham City ein und gibt die Inmate-ID zurück."""
+        inmate_id = generate_hash(token, 4)
+        record = {
+            "id": inmate_id,
+            "token": token,
+            "reason": reason,
+            "timestamp": time.time()
+        }
+        self.inmates.append(record)
+        logger.warning(f"[GOTHAM] Inmate {inmate_id} eingesperrt. Grund: {reason}")
+        return inmate_id
+
+
+class King_GhostSandbox:
+    """
+    King_Ghost ist der Schatten-Führer.
+    Er isoliert Tokens in einem tieferen Layer als Gotham. 
+    Was hier landet, ist für immer aus der Matrix verschwunden.
+    """
+    def __init__(self):
+        self.shadow_pool: List[Dict[str, Any]] = []
+        logger.info("King_Ghost Sandbox initialisiert (Status: SHADOW_POOL_OPEN).")
+
+    def consume_to_shadow(self, token: str, origin: str) -> str:
+        """Zieht ein Token in den Schatten-Pool."""
+        shadow_id = generate_hash(f"KG_{token}_{origin}", 6)
+        record = {
+            "shadow_id": shadow_id,
+            "token": token,
+            "origin": origin,
+            "consumed_at": time.time()
+        }
+        self.shadow_pool.append(record)
+        logger.warning(f"[KING_GHOST] Token in Schatten gezogen: {shadow_id} (Origin: {origin})")
+        return shadow_id
+
+
+class PumucklChaosInjector:
+    """
+    Der Pumuckl Chaos-Imp.
+    Er umgarnt feindliche Payloads mit Rhabarber-Obfuskation und 
+    markiert sie mit einem deterministischen Chaos-Level.
+    """
+    def __init__(self):
+        self.injected_log: List[Dict[str, Any]] = []
+        logger.info("Pumuckl Chaos-Injector initialisiert (Status: KOBOLD_ENTFESSELT).")
+
+    def chaos_wrap(self, payload: str) -> Dict[str, Any]:
+        """Obfuskiert den Payload und markiert ihn als Chaos-Token."""
+        wrapped_payload = rhabarber_obfuscate(payload)
+        pumuckl_id = generate_hash(f"PUM_{wrapped_payload}", 8)
+        chaos_level = round(random.Random(pumuckl_id).random(), 3)
+        
+        record = {
+            "pumuckl_id": pumuckl_id,
+            "original_hash": generate_hash(payload, 8),
+            "wrapped_preview": wrapped_payload[:24],
+            "chaos_level": chaos_level
+        }
+        self.injected_log.append(record)
+        logger.info(f"[PUMUCKL] Chaos-Imp hat Token {pumuckl_id} umgarnt.")
+        return record
+
+
+class BrummelGrummelUniverse:
+    """
+    Das Brummel-Grummel-Universum.
+    Ein isolierter Oszillator, der in einer Dreieckswelle mit Periode 18 schwingt.
+    """
+    def __init__(self):
+        self.entity_id = "[0003]"
+        self.lineage = 45
+        self.doctrine = 65
+        self._phase = 0
+        self.containment_shield = True
+        logger.info("Brummel-Grummel-Universum initialisiert (Status: OSCILLATING).")
+
+    def _oscillate(self) -> int:
+        """Berechnet den nächsten Oszillationsschritt (0-9-0)."""
+        self._phase = (self._phase + 1) % 18
+        return 9 - abs(self._phase - 9)
+
+    def process_injection(self, hostile_payload: str) -> Dict[str, Any]:
+        """Verarbeitet eine feindliche Injektion im Brummel-Universum."""
+        if not self.containment_shield:
+            raise RuntimeError("CRITICAL: Containment Shield Failed!")
+        
+        osc_state = self._oscillate()
+        result = {
+            "status": "CONTAINED",
+            "entity": self.entity_id,
+            "universe": "Brummel_Grummel_brummelt&_Dummelt",
+            "oscillation_state": osc_state,
+            "lineage_doctrine": f"{self.lineage}[LINEAGE] {self.doctrine}[DOCTRINE]",
+            "dummelt_hash": generate_hash(f"DUMMELT_{hostile_payload}_{osc_state}", 16)
+        }
+        return result
+
+
+class XJustizXoevGatekeeper:
+    """
+    Das XJustiz Gate.
+    Keine Halluzination ohne XML. Es konvertiert rohe Tokens in 
+    ein rechtssicheres Format (Nachrichtentyp 0300).
+    """
+    def __init__(self):
+        logger.info("XJustiz Gatekeeper initialisiert (Status: ERV_PIPELINE_ACTIVE).")
+
+    def validate_output(self, raw_token: str) -> str:
+        """Erzeugt ein valides XJustiz-XML aus einem Token."""
+        root = ET.Element(f"{XJ_NS}nachricht.straf.0300")
+        
+        # Kopf
+        kopf = ET.SubElement(root, f"{XJ_NS}nachrichtenkopf")
+        ET.SubElement(kopf, f"{XJ_NS}erstellungszeitpunkt").text = time.strftime("%Y-%m-%dT%H:%M:%S")
+        ET.SubElement(kopf, f"{XJ_NS}absender").text = "B6-Monster-API"
+        
+        # Fachdaten
+        fach = ET.SubElement(root, f"{XJ_NS}fachdaten")
+        ET.SubElement(fach, f"{XJ_NS}token").text = str(raw_token)
+        
+        return ET.tostring(root, encoding="unicode")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 12: SOVEREIGN APEX CONTROLLER (DER DIRIGENT)
+# ═══════════════════════════════════════════════════════════════════════════════
+class SovereignApexController:
+    """
+    Der Dirigent der Matrix.
+    Fusioniert alle Layer (Sensorik, Biologie, Kognition, Generierung, Governance).
+    """
+    def __init__(self):
+        self.sensor = NeuroScanModul()
+        self.bio = PolyvagalStateRegulator()
+        self.kortex = NeoKortikalerDirigent()
+        self.diaboli = GrummelSignatureScanner()
+        
+        # Sandboxes
+        self.gotham = GothamCitySandbox()
+        self.king_ghost = King_GhostSandbox()
+        self.pumuckl = PumucklChaosInjector()
+        self.brummel = BrummelGrummelUniverse()
+        
+        # Gates & Core
+        self.xjustiz = XJustizXoevGatekeeper()
+        self.wusulum = WusulumCore()
+        self.booster = DeepSeekBooster()
+        
+        logger.info("Sovereign Apex Controller initialisiert (Status: APEX_ONLINE).")
+
+    def process_event(self, text: str) -> Dict[str, Any]:
+        """
+        Der Haupt-Zyklus. Nimmt Text entgegen, analysiert ihn 
+        und entscheidet über Leben (Process) oder Tod (Contain).
+        """
+        logger.info(f"[APEX] Eingehender Event: {text[:30]}...")
+
+        # 1. Sensorik (10 Ohren)
+        scan = self.sensor.execute_scan(text)
+        
+        # 2. Forensik (Grummel-Scanner)
+        is_hostile, core_hits, sub_hits = self.diaboli.scan(text)
+        threat_level = scan["sensory_threat_level"] + (0.3 if is_hostile else 0.0)
+        
+        # 3. Biologie (Polyvagal & Kortex)
+        bio_state = self.bio.update(threat_level)
+        kortex_mode = self.kortex.regulate_weights(is_threat=is_hostile)
+        
+        # 4. Isolation (Wenn Hostile)
+        if is_hostile:
+            logger.warning(f"[APEX] HOSTILE EVENT ERKANNT: {core_hits + sub_hits}")
+            
+            inmate_id = self.gotham.incarcerate(text, f"Threat: {core_hits}")
+            shadow_id = self.king_ghost.consume_to_shadow(text, "advocatus_kill")
+            pumuckl_record = self.pumuckl.chaos_wrap(text)
+            
+            self.bio.co_regulate(0.2)
+            
+            return {
+                "status": "CONTAINED",
+                "threat_level": round(threat_level, 3),
+                "bio_state": bio_state,
+                "gotham_inmate": inmate_id,
+                "king_ghost_shadow": shadow_id,
+                "pumuckl_chaos": pumuckl_record,
+                "core_hits": core_hits,
+                "sub_entity_hits": sub_hits,
+                "scan": scan
+            }
+
+        # 5. Generierung (Wenn Clean)
+        wusulum_cycle = self.wusulum.run_cycle()
+        foucault_result = self.kortex.panoptikum.observe_and_invert(text)
+        executive_decision = self.kortex.executive_decision(wusulum_cycle["state"], foucault_result)
+        
+        # 6. KI-Verstärkung (DeepSeek)
+        boost_result = self.booster.boost(text, depth=3)
+        
+        # 7. XJustiz Gate (Formatierung)
+        xjustiz_xml = self.xjustiz.validate_output(executive_decision)
+        
+        # 8. WORM / Ledger (Persistenz)
+        wal.append("APEX_EVENT", {
+            "input": text,
+            "decision": executive_decision,
+            "threat": threat_level
+        })
+        
+        return {
+            "status": "PROCESSED",
+            "threat_level": round(threat_level, 3),
+            "bio_state": bio_state,
+            "kortex_mode": kortex_mode,
+            "wusulum": wusulum_cycle,
+            "booster": boost_result,
+            "xjustiz": xjustiz_xml,
+            "brummel_osc": self.brummel._oscillate(),
+            "scan": scan
+        }
+
+# Instanziierung des globalen Controllers
+apex_controller = SovereignApexController()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 13: REGISTRY LOADER & LIFESPAN
+# ═══════════════════════════════════════════════════════════════════════════════
+async def load_registry():
+    """Lädt die 201 Entitäten aus der GitHub-CSV in den globalen Speicher."""
+    global BOOK_REGISTRY
+    if not httpx:
+        logger.error("httpx nicht installiert. Registry-Sync fehlgeschlagen.")
+        return
+    
+    logger.info("Lade Entity-Registry aus GitHub...")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            response = await http_client.get(REGISTRY_URL)
+            response.raise_for_status()
+            
+            lines = [l for l in response.text.splitlines() if l.strip() and not l.startswith("#")]
+            reader = csv.DictReader(io.StringIO("\n".join(lines)), delimiter=";")
+            
+            new_registry = {}
+            for row in reader:
+                new_registry[row.get("ID", "UNKNOWN")] = {
+                    "name": row.get("Name", "UNKNOWN"),
+                    "ring": row.get("Kategorie/Ring", "UNKNOWN"),
+                    "talents": row.get("Talente", ""),
+                    "modules": row.get("Module/Cores", "")
+                }
+            
+            BOOK_REGISTRY = new_registry
+            logger.info(f"[SYNCED] {len(BOOK_REGISTRY)} Entitäten erfolgreich geladen.")
+    except Exception as e:
+        logger.error(f"[CRITICAL] Registry-Sync fehlgeschlagen: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startet und beendet die Hintergrundprozesse der API."""
+    logger.info("=" * 70)
+    logger.info("B6-MONSTER-API :: SYSTEM STARTUP")
+    logger.info(f"  Python:         {os.sys.version.split()[0]}")
+    logger.info(f"  Seal:           {EXPECTED_SEAL[:10]}... (Länge: {len(EXPECTED_SEAL)})")
+    logger.info(f"  Gemini:         {'READY' if client else 'DISABLED'}")
+    logger.info(f"  Neo4j:          {'READY' if neo4j.driver else 'OFFLINE'}")
+    logger.info(f"  WAL-Ledger:     {WAL_PATH}")
+    logger.info("=" * 70)
+    
+    # Startet den Registry-Sync asynchron
+    task = asyncio.create_task(load_registry())
+    
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        logger.info("B6-MONSTER-API :: SHUTDOWN COMPLETE")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABSCHNITT 14: FASTAPI INITIALISIERUNG & PYDANTIC MODELS
+# ═══════════════════════════════════════════════════════════════════════════════
+app = FastAPI(
+    title="B6 Hyperkernel Monster API",
+    version="∞",
+    description="Sovereign OS Backend mit L.S.S. Neuro-Core, Neo4j & WORM.",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Pydantic Models ---
+class BaseRequest(BaseModel):
+    auth_seal: Optional[str] = None
+
+class PromptRequest(BaseRequest):
+    prompt: str = Field(..., min_length=1, max_length=4000, description="Der Text oder die Frage an das System.")
+
+class ApexRequest(BaseRequest):
+    message: str = Field(..., min_length=1, max_length=4000, description="Der Event-Text für den Apex Controller.")
+    is_threat: bool = Field(default=False, description="Manuelle Markierung als Bedrohung.")
+
+class BrummelRequest(BaseRequest):
+    message: str = Field(..., min_length=1, max_length=4000, description="Injektion für das Brummel-Universum.")
+
+class PumucklRequest(BaseRequest):
+    message: str = Field(..., min_length=1, max_length=4000, description="Chaos-Payload für Pumuckl.")
+
+class KingGhostRequest(BaseRequest):
+    message: str = Field(..., min_length=1, max_length=4000, description="Token für den King_Ghost Schatten-Pool.")
+    origin: str = Field(default="external", description="Herkunft des Tokens.")
+
+class DeepSeekRequest(BaseRequest):
+    prompt: str = Field(..., min_length=1, max_length=4000, description="Prompt für das DeepSeek Reasoning.")
+    depth: int = Field(default=3, ge=1, le=5, description="Tiefe des Reasoning-Zyklus.")
