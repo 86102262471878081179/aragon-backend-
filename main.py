@@ -644,10 +644,13 @@ class NeoKortikalerDirigent:
 # ═══════════════════════════════════════════════════════════════════════════════
 # ABSCHNITT 13: DEEPSEEK BOOSTER
 # ═══════════════════════════════════════════════════════════════════════════════
+import copy
+
+
 class DeepSeekBooster:
     """
     Reasoning-Layer inspiriert von DeepSeek-R1.
-    Multi-Step Reasoning mit Confidence-Scoring.
+    Cache-Key berücksichtigt sämtliche übergebenen Ergebnisparameter.
     """
 
     STEPS = ["decompose", "expand", "verify", "confidence"]
@@ -655,10 +658,42 @@ class DeepSeekBooster:
     def __init__(self):
         self.cache: Dict[str, Dict[str, Any]] = {}
 
-    def boost(self, prompt: str, context: str = "", depth: int = 3) -> Dict[str, Any]:
-        key = _h(prompt + context, 16)
+    @staticmethod
+    def _cache_key(
+        prompt: str,
+        context: str,
+        depth: int,
+        options: Dict[str, Any],
+    ) -> str:
+        key_data = {
+            "prompt": prompt,
+            "context": context,
+            "depth": depth,
+            **options,
+        }
+        try:
+            return json.dumps(
+                key_data,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Cache-Parameter müssen JSON-serialisierbar sein: {exc}"
+            ) from exc
+
+    def boost(
+        self,
+        prompt: str,
+        context: str = "",
+        depth: int = 3,
+        **options: Any,
+    ) -> Dict[str, Any]:
+        key = self._cache_key(prompt, context, depth, options)
+
         if key in self.cache:
-            return self.cache[key]
+            return copy.deepcopy(self.cache[key])
 
         trace: List[Dict[str, Any]] = []
         for i in range(depth):
@@ -685,8 +720,9 @@ class DeepSeekBooster:
             "depth": depth,
             "verdict": "HIGH_CONFIDENCE" if confidence > 0.7 else "REVIEW_NEEDED",
         }
-        self.cache[key] = result
-        return result
+
+        self.cache[key] = copy.deepcopy(result)
+        return copy.deepcopy(result)
 
     def _step_note(self, idx: int, prompt: str) -> str:
         notes = [
@@ -696,7 +732,6 @@ class DeepSeekBooster:
             "Confidence: Bewerte Verlässlichkeit des Resultats.",
         ]
         return notes[idx % len(notes)]
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ABSCHNITT 14: L.S.S. GENERIERUNG (WUSULUM & KARTEN)
