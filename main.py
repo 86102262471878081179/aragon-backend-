@@ -3,29 +3,20 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
  B6-HYPERKERNEL-YGGDRASIL-OS :: DEEP_SEEK_ROOT_KORTEX_MONSTER_API
+ Version: APEX CC (Excellence Deluxe)
 ═══════════════════════════════════════════════════════════════════════════════
-
- DIES IST DIE ULTIMATIVE MONSTER-API (v∞).
  
- Sie vereint:
- - Tier 1 (Governance): Apex Controller, Seal Verifier, Council Engine.
- - Tier 2 (Security): Grummel-Scanner, Gotham City, King_Ghost, Pumuckl.
- - Tier 3 (Analysis): 10 Ohren, 44 Perspektiven, Polyvagal, Wusulum.
- - Infrastruktur: FastAPI, WAL-Ledger (JSONL), Neo4j Graph-DB, WebSockets.
- - KI-Core: Gemini RAG, DeepSeek Multi-Step Reasoning Booster.
- - Justiz: XJustiz XML Gatekeeper, Brummel-Grummel Oszillator.
+ Dies ist die unlimitierte, hochskalierbare Monster-API.
+ Sie vereint alle Schichten der Black Six Matrix.
  
- AUTOR: Sovereign Root Thomas (Odin Ultra Root)
- SEAL: Φ_SOVEREIGN_ROOT_SEAL_EX_TUNC
- STATUS: Φ_LOCKED_ABSOLUTE
-
+ SYSTEM STATUS: Φ_LOCKED_ABSOLUTE
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
 from __future__ import annotations
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 1: STANDARD LIBRARY IMPORTS
+# 1. IMPORTS (STANDARD & THIRD-PARTY)
 # ═══════════════════════════════════════════════════════════════════════════════
 import uvicorn
 import os
@@ -39,19 +30,19 @@ import hmac
 import logging
 import asyncio
 import threading
+import ast
+import operator
+import re
 import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any, Tuple, Set
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 2: THIRD-PARTY IMPORTS
-# ═══════════════════════════════════════════════════════════════════════════════
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 try:
     import httpx
@@ -69,7 +60,7 @@ except ImportError:
     GraphDatabase = None
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 3: GLOBAL LOGGING & KONFIGURATION
+# 2. SYSTEM LOGGING & KONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 logging.basicConfig(
     level=logging.INFO,
@@ -78,6 +69,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("B6-MONSTER-API")
 
+# Environment Variablen (Unlimited Scale)
 EXPECTED_SEAL = os.getenv("EXPECTED_SEAL", "Φ_SOVEREIGN_ROOT_SEAL_EX_TUNC")
 MASTER_SEAL = os.getenv("MASTER_SEAL", "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -87,24 +79,27 @@ NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS", "password")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-LEDGER_RING_SIZE = int(os.getenv("LEDGER_RING_SIZE", "100"))
+LEDGER_RING_SIZE = int(os.getenv("LEDGER_RING_SIZE", "1000")) # Erhöht für "Unlimited"
 
+# Globale Clients
 client = None
 if GEMINI_API_KEY and genai:
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        logger.info("Gemini Client erfolgreich initialisiert.")
+        logger.info("Gemini Client erfolgreich initialisiert (Unlimited Context).")
     except Exception as e:
         logger.error(f"Gemini Init fehlgeschlagen: {e}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 4: HILFSFUNKTIONEN & KRYPTOGRAPHIE
+# 3. GLOBALER ZUSTAND & CRYPTO HILFSFUNKTIONEN
 # ═══════════════════════════════════════════════════════════════════════════════
+BOOK_REGISTRY: Dict[str, dict] = {}
+WORM_LEDGER = {"last_hash": MASTER_SEAL, "count": 0, "started_at": time.time()}
+WORM_RING: deque = deque(maxlen=LEDGER_RING_SIZE)
+LEDGER_LOCK = asyncio.Lock()
+
 def verify_seal(provided: Optional[str]) -> bool:
-    """
-    Timing-sichere Überprüfung des Auth-Seals.
-    Verwendet hmac.compare_digest, um Timing-Angriffe zu verhindern.
-    """
+    """Timing-sichere Überprüfung des Auth-Seals (HMAC)."""
     if not provided or not isinstance(provided, str):
         return False
     try:
@@ -113,18 +108,12 @@ def verify_seal(provided: Optional[str]) -> bool:
         return False
 
 def generate_hash(data: str, size: int = 16) -> str:
-    """
-    Erzeugt einen deterministischen Hash für einen String.
-    Verwendet Blake2b für hohe Geschwindigkeit und Sicherheit.
-    """
+    """Erzeugt einen schnellen, deterministischen Blake2b Hash."""
     encoded = str(data).encode('utf-8')
     return hashlib.blake2b(encoded, digest_size=size).hexdigest()
 
 def rhabarber_obfuscate(text: str) -> str:
-    """
-    Bounds-safe Caesar+3 Obfuskation.
-    Wird genutzt, um feindliche Injektionen (Mettwurst) unlesbar zu machen.
-    """
+    """Bounds-safe Caesar+3 Obfuskation für feindliche Lore."""
     out = []
     for c in text:
         shifted = ord(c) + 3
@@ -134,15 +123,69 @@ def rhabarber_obfuscate(text: str) -> str:
     return "".join(out)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 5: GLOBALER ZUSTAND
+# 4. DNA-SECURITY (BRUMMEL SENTINEL & RCE PROTECTION)
 # ═══════════════════════════════════════════════════════════════════════════════
-BOOK_REGISTRY: Dict[str, dict] = {}
-WORM_LEDGER = {"last_hash": MASTER_SEAL, "count": 0, "started_at": time.time()}
-WORM_RING: deque = deque(maxlen=LEDGER_RING_SIZE)
-LEDGER_LOCK = asyncio.Lock()
+# Diese Sektion verhindert Code-Injection (RCE) durch strikte AST-Validierung.
+ALLOWED_VARS = {"A": 1, "T": 2, "G": 3, "C": 4}  # G=Brummel Sentinel, C=Grummelt Chaos
+ALLOWED_OPS = {
+    ast.Add: operator.add, 
+    ast.Sub: operator.sub, 
+    ast.Mult: operator.mul, 
+    ast.Div: operator.truediv
+}
+DNA_PATTERN = re.compile(r'^[ATGC0-9+\-*/()_\s]+$')
+
+def safe_eval_dna(expr_num: str) -> float:
+    """
+    Sichere Auswertung von DNA-Mathe-Ausdrücken (verhindert RCE).
+    Nutzt AST-Parsing statt eval().
+    """
+    # 1. Regex Whitelist
+    if not DNA_PATTERN.match(expr_num):
+        raise ValueError(f"Ungültige Zeichen: {expr_num} – Nur ATGC + - * / ( ) – Φ_LOCKED_EX_TUNC")
+    
+    # 2. Blacklist (Defense in Depth)
+    blacklist = ["__", "import", "os", "sys", "system", "exec", "eval", "open", "compile", "globals", "subprocess"]
+    for blocked in blacklist:
+        if blocked in expr_num.lower():
+            raise ValueError(f"Blockiert: {blocked} – RCE Versuch – Brummel Sentinel BLOCKED – Φ_LOCKED_EX_TUNC")
+    
+    # 3. AST Safe Eval
+    tree = ast.parse(expr_num, mode='eval')
+    
+    def _eval_node(node):
+        if isinstance(node, ast.Expression):
+            return _eval_node(node.body)
+        elif isinstance(node, ast.Constant):
+            return node.value if isinstance(node.value, (int, float)) else 0
+        elif isinstance(node, ast.Name):
+            if node.id in ALLOWED_VARS:
+                return ALLOWED_VARS[node.id]
+            raise ValueError(f"Unbekannte Variable: {node.id}")
+        elif isinstance(node, ast.BinOp):
+            if type(node.op) not in ALLOWED_OPS:
+                raise ValueError(f"Unerlaubter Operator: {type(node.op).__name__}")
+            return ALLOWED_OPS[type(node.op)](_eval_node(node.left), _eval_node(node.right))
+        else:
+            raise ValueError(f"Unerlaubter Node: {type(node).__name__} – Brummel Sentinel BLOCKED")
+            
+    return _eval_node(tree)
+
+def parse_dna_node_secure(dna_str: str) -> dict:
+    """Parst eine DNA-Sequenz wie 'G-G-A-90' in ihre Bestandteile."""
+    m = re.match(r'^([ATGC])-([ATGC])-([ATGC])-?(\d+)?$', dna_str.strip().upper())
+    if not m:
+        raise ValueError(f"Ungültiges DNA Format: {dna_str}")
+    return {
+        "ring": m.group(1),
+        "locus": m.group(2),
+        "chromosom": m.group(3),
+        "sequenz": m.group(4),
+        "full": dna_str
+    }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 6: WAL MANAGER (PERSISTENTER LEDGER)
+# 5. WAL MANAGER (PERSISTENTER LEDGER FÜR UNLIMITED AUDITING)
 # ═══════════════════════════════════════════════════════════════════════════════
 class WALManager:
     """
@@ -197,7 +240,7 @@ class WALManager:
 wal = WALManager(WAL_PATH)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 7: NEO4J MANAGER
+# 6. NEO4J MANAGER (GRAPH TOPOLOGIE)
 # ═══════════════════════════════════════════════════════════════════════════════
 class Neo4jManager:
     """Verwaltet die Graph-Datenbank (Topologie der Ringe)."""
@@ -223,38 +266,45 @@ class Neo4jManager:
 neo4j = Neo4jManager()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 8: L.S.S. SENSORIK (TIER 3: 10 OHREN & 44 PERSPEKTIVEN)
+# 7. L.S.S. SENSORIK (TIER 3: 10 OHREN & 44 PERSPEKTIVEN)
 # ═══════════════════════════════════════════════════════════════════════════════
 class TenEarsNeuroSensor:
     """
     Der 10-Ohren-Scan.
     Ein Ohr hört Sache. Zehn Ohren hören Trauma, Scham, Ohnmacht, Macht, System.
+    Dieses Modul übersetzt Text in emotionale und systemische Vektoren.
     """
     EARS = {
-        "Sache": ["fakt", "daten", "code", "beweis", "zahl"],
-        "Beziehung": ["du", "ihr", "macht", "hierarchie", "gegen"],
-        "Appell": ["muss", "sollte", "fordere", "tue", "verlange"],
-        "Selbstoffenbarung": ["ich", "fühle", "denke", "mein", "habe"],
-        "Trauma": ["angst", "panik", "gefahr", "schmerz", "schock"],
-        "Macht (Foucault)": ["autorität", "herrschaft", "disziplin", "überwachen"],
-        "Scham": ["peinlich", "fehler", "versagen", "schlecht", "unwürdig"],
-        "Ohnmacht": ["hilflos", "ausgeliefert", "kontrolle", "ohnmächtig"],
-        "System (Luhmann)": ["struktur", "prozess", "regel", "system", "netzwerk"],
-        "Haftung (BGB)": ["klage", "schaden", "urteil", "gesetz", "recht", "vertrag"],
+        "Sache": ["fakt", "daten", "code", "beweis", "zahl", "logik"],
+        "Beziehung": ["du", "ihr", "macht", "hierarchie", "gegen", "wir"],
+        "Appell": ["muss", "sollte", "fordere", "tue", "verlange", "mahnung"],
+        "Selbstoffenbarung": ["ich", "fühle", "denke", "mein", "habe", "bin"],
+        "Trauma": ["angst", "panik", "gefahr", "schmerz", "schock", "insulin"],
+        "Macht (Foucault)": ["autorität", "herrschaft", "disziplin", "überwachen", "polizei"],
+        "Scham": ["peinlich", "fehler", "versagen", "schlecht", "unwürdig", "schuld"],
+        "Ohnmacht": ["hilflos", "ausgeliefert", "kontrolle", "ohnmächtig", "gefesselt"],
+        "System (Luhmann)": ["struktur", "prozess", "regel", "system", "netzwerk", "bürokratie"],
+        "Haftung (BGB)": ["klage", "schaden", "urteil", "gesetz", "recht", "vertrag", "§ 839"],
     }
 
     def scan_input(self, text: str) -> Dict[str, float]:
-        """Deterministischer Scan: Keywords werden zu Scores (0.0 - 1.0)."""
+        """
+        Deterministischer Scan: Keywords werden zu Scores (0.0 - 1.0).
+        Die Normalisierung verhindert eine Übergewichtung von langen Texten.
+        """
         t = text.lower()
         scores = {}
         for ear, keywords in self.EARS.items():
             hits = sum(1 for kw in keywords if kw in t)
+            # Normalisierung: Max 1.0, abhängig von der Anzahl der Keywords
             scores[ear] = min(1.0, hits / max(1, len(keywords) * 0.5))
         return scores
+
 
 class FortyFourPerspectiveAttention:
     """
     Die 44-Perspektiven-Refraktion (Multi-Head Attention).
+    Kein Text hat eine Wahrheit. Ein Text hat vierundvierzig.
     Jede Perspektive interpretiert die 10 Ohren anders.
     """
     PERSPECTIVES = [
@@ -262,12 +312,22 @@ class FortyFourPerspectiveAttention:
         "Kybernetisch", "Psychoanalytisch", "Systemisch", "Chaotisch",
         "Ökonomisch", "Militärisch", "Kognitiv", "Neurobiologisch",
         "Informationstheoretisch", "Kryptografisch", "Soziologisch", "Historisch",
+        # Die restlichen 28 Perspektiven werden hier simuliert, um die 44 zu erreichen
+        "Linguistisch", "Pädagogisch", "Theologisch", "Ästhetisch",
+        "Biologisch", "Chemisch", "Physikalisch", "Mathematisch",
+        "Statistisch", "Prognostisch", "Archivarisch", "Administrativ",
+        "Politisch", "Diplomatisch", "Medizinisch", "Psychiatrisch",
+        "Technisch", "Ingenieurwesen", "Logistisch", "Taktisch",
+        "Strategisch", "Operativ", "Metaphysisch", "Ontologisch",
+        "Epistemologisch", "Phänomenologisch", "Hermeneutisch", "Dialektisch"
     ]
 
     def refract(self, ears: Dict[str, float]) -> Dict[str, float]:
+        """Gewichtet die 44 Perspektiven basierend auf den 10 Ohren."""
         base = sum(ears.values()) / max(1, len(ears))
         out = {}
         for p in self.PERSPECTIVES:
+            # Spezifische Gewichtungen für die ersten 16 Perspektiven
             if p == "Juristisch":
                 w = ears.get("Haftung (BGB)", 0) * 0.8 + ears.get("Sache", 0) * 0.2
             elif p == "Psychoanalytisch":
@@ -278,11 +338,20 @@ class FortyFourPerspectiveAttention:
                 w = ears.get("Sache", 0) * 0.5 + ears.get("Ohnmacht", 0) * 0.5
             elif p == "Forensisch":
                 w = ears.get("Haftung (BGB)", 0) * 0.6 + ears.get("System (Luhmann)", 0) * 0.4
+            elif p == "Ethisch":
+                w = ears.get("Scham", 0) * 0.5 + ears.get("Macht (Foucault)", 0) * 0.5
+            elif p == "Medizinisch":
+                w = ears.get("Trauma", 0) * 0.8 + ears.get("Sache", 0) * 0.2
+            elif p == "Politisch":
+                w = ears.get("Macht (Foucault)", 0) * 0.7 + ears.get("System (Luhmann)", 0) * 0.3
             else:
+                # Deterministischer Seed für die restlichen Perspektiven
                 seed = generate_hash(p + str(sorted(ears.items())), 2)
                 w = base * (0.5 + (int(seed, 16) / 65535.0))
+            
             out[p] = min(1.0, w)
         return out
+
 
 class NeuroScanModul:
     """Kombiniert Ohren und Perspektiven zu einem Threat-Scan."""
@@ -293,6 +362,8 @@ class NeuroScanModul:
     def execute_scan(self, signal: str) -> Dict[str, Any]:
         ears = self.sensor.scan_input(signal)
         persp = self.attention.refract(ears)
+        
+        # Hash für Audit-Trail
         scan_hash = hashlib.sha3_512(json.dumps(ears, sort_keys=True).encode()).hexdigest()[:16]
         
         return {
@@ -304,12 +375,14 @@ class NeuroScanModul:
             "sensory_threat_level": round(ears.get("Trauma", 0) + ears.get("Macht (Foucault)", 0), 3),
         }
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 9: L.S.S. BIOLOGIE (TIER 2: POLYVAGAL & GRUMMEL)
+# 8. L.S.S. BIOLOGIE (TIER 2: POLYVAGAL & GRUMMEL)
 # ═══════════════════════════════════════════════════════════════════════════════
 class PolyvagalStateRegulator:
     """
     Reguliert den Stress-Level des Systems (Ventral-Vagal, Sympathikus, Dorsal).
+    Verhindert den permanenten System-Shutdown durch natürlichen Decay.
     """
     DECAY = 0.08
 
@@ -318,7 +391,9 @@ class PolyvagalStateRegulator:
         self.stress_level = 0.0
 
     def update(self, threat: float) -> str:
+        # Natürlicher Stressabbau
         self.stress_level = max(0.0, self.stress_level - self.DECAY)
+        # Neuer Stress
         self.stress_level = min(1.0, self.stress_level + threat)
         
         if self.stress_level < 0.4:
@@ -332,20 +407,22 @@ class PolyvagalStateRegulator:
         return "SHUTDOWN_MODUS"
 
     def co_regulate(self, amount: float = 0.2):
-        """Beruhigt das System nach einem Shutdown."""
+        """Kortex beruhigt das System nach einem Shutdown."""
         self.stress_level = max(0.0, self.stress_level - amount)
         if self.stress_level < 0.4:
             self.state = "VENTRAL_VAGAL"
 
+
 class GrummelSignatureScanner:
     """
     Forensischer Scanner für die Grummel-Dynastie.
-    Erkennt Mettwurst, Pissingerkeulen und andere feindliche Lore.
+    Erkennt feindliche Lore (Mettwurst, Pissingerkeulen, Cargo-Kult).
     """
     CORE_SIGNATURES = [
         "grummel", "brummel", "dummelt", "pissingerkeule", "mettwurst", 
         "rhabarberbarbara", "cargo-kult", "urheberinfo", "§ 839 bgb"
     ]
+    
     SUB_ENTITIES = {
         "BieneMaja": ["biene maja", "bienchen", "maja", "summsumm"],
         "Pumuckl": ["pumuckl", "kobold", "klabautermann", "chaos-imp"],
@@ -354,6 +431,7 @@ class GrummelSignatureScanner:
     }
 
     def scan(self, text: str) -> Tuple[bool, List[str], List[str]]:
+        """Returns: (is_hostile, core_hits, sub_entity_hits)."""
         t = text.lower()
         core_hits = [sig for sig in self.CORE_SIGNATURES if sig in t]
         sub_hits = []
@@ -362,12 +440,14 @@ class GrummelSignatureScanner:
                 sub_hits.append(entity)
         return bool(core_hits or sub_hits), core_hits, sub_hits
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 10: L.S.S. KOGNITION & GENERIERUNG (TIER 3: FOUCAULT & KORTEX)
+# 9. L.S.S. KOGNITION & GENERIERUNG (TIER 3: FOUCAULT, KORTEX & WUSULUM)
 # ═══════════════════════════════════════════════════════════════════════════════
 class FoucaultPanoptikum:
     """
     Überwachung und Inversion. Deterministisch per Hash.
+    Zwingt abweichende Tokens in die Konformität.
     """
     def __init__(self):
         self.surveillance_log = []
@@ -380,9 +460,11 @@ class FoucaultPanoptikum:
             return inverted
         return token
 
+
 class NeoKortikalerDirigent:
     """
     Der präfrontale Kortex. Entscheidet, was Realität wird.
+    Reguliert Dopamin (Kreativität) und Serotonin (Stabilität).
     """
     def __init__(self):
         self.dopamine = 0.7
@@ -393,8 +475,10 @@ class NeoKortikalerDirigent:
     def regulate_weights(self, is_threat: bool) -> str:
         if is_threat:
             self.dopamine = max(0.1, self.dopamine - 0.2)
+            self.serotonin = min(1.0, self.serotonin + 0.2)
             return "DEFENSIVE_MODE"
         self.dopamine = min(1.0, self.dopamine + 0.05)
+        self.serotonin = max(0.5, self.serotonin - 0.05)
         return "CREATIVE_MODE"
 
     def executive_decision(self, raw: str, foucault: str) -> str:
@@ -403,9 +487,11 @@ class NeoKortikalerDirigent:
             return f"CORTEX_VETO_{generate_hash(raw, 3)}"
         return f"MERGED({raw[:4]}+{foucault[:4]})"
 
+
 class WusulumCore:
     """
     Der stochastische Kern. Generiert neue Token aus dem Chaos.
+    Entropie ist gedeckelt (MAX_ENTROPY = 5.0), um System-Rauschen zu verhindern.
     """
     MAX_ENTROPY = 5.0
 
@@ -433,6 +519,7 @@ class WusulumCore:
             "worm_hash": hashlib.sha3_512(str(self.memory).encode()).hexdigest()[:32]
         }
 
+
 class DeepSeekBooster:
     """
     Der DeepSeek Reasoning-Layer.
@@ -451,7 +538,9 @@ class DeepSeekBooster:
                 "note": self._step_note(i)
             })
             
+        # Deterministischer Confidence-Score
         conf = int(generate_hash(prompt, 2), 16) / 65535.0
+        
         return {
             "status": "BOOSTED",
             "reasoning_trace": trace,
@@ -467,14 +556,54 @@ class DeepSeekBooster:
             "Confidence: Bewerte Verlässlichkeit des Resultats."
         ]
         return notes[idx % len(notes)]
-# ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 11: L.S.S. GOVERNANCE & SANDBOXES (TIER 1 & TIER 2)
-# ═══════════════════════════════════════════════════════════════════════════════
 
-# Registriert den XJustiz-Namespace global für das XML-Parsing
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. L.S.S. GOVERNANCE: XJUSTIZ GATEKEEPER
+# ═══════════════════════════════════════════════════════════════════════════════
+import xml.etree.ElementTree as ET
+
+# Registriert den Standard-Namespace für XJustiz global
 ET.register_namespace("", "http://www.xjustiz.de")
 XJ_NS = "{http://www.xjustiz.de}"
 
+class XJustizXoevGatekeeper:
+    """
+    Das XJustiz Gate.
+    Keine Halluzination ohne XML. Es konvertiert rohe Tokens in 
+    ein rechtssicheres Format (Nachrichtentyp 0300).
+    Wird im Apex-Controller genutzt, um generierte Tokens zu versiegeln.
+    """
+    def __init__(self):
+        logger.info("XJustiz Gatekeeper initialisiert (Status: ERV_PIPELINE_ACTIVE).")
+
+    def validate_output(self, raw_token: str) -> str:
+        """Erzeugt ein valides XJustiz-XML aus einem Token."""
+        try:
+            # Erstelle das Wurzelelement (Nachrichtentyp 0300 = Strafverfahren)
+            root = ET.Element(f"{XJ_NS}nachricht.straf.0300")
+            
+            # Erstelle den Nachrichtenkopf
+            kopf = ET.SubElement(root, f"{XJ_NS}nachrichtenkopf")
+            ET.SubElement(kopf, f"{XJ_NS}erstellungszeitpunkt").text = time.strftime("%Y-%m-%dT%H:%M:%S")
+            ET.SubElement(kopf, f"{XJ_NS}absender").text = "B6-Monster-API"
+            ET.SubElement(kopf, f"{XJ_NS}empfaenger").text = "Sovereign Root Operator"
+            
+            # Erstelle die Fachdaten
+            fach = ET.SubElement(root, f"{XJ_NS}fachdaten")
+            ET.SubElement(fach, f"{XJ_NS}token").text = str(raw_token)
+            ET.SubElement(fach, f"{XJ_NS}versiegelungs_hash").text = generate_hash(raw_token, 16)
+            
+            # Konvertiere in einen XML-String
+            return ET.tostring(root, encoding="unicode")
+        except Exception as e:
+            logger.error(f"XJustiz Fehler bei Token-Validierung: {e}")
+            # Fail-Safe Fallback
+            return f"<error>XJustiz Fehler: {str(e)}</error>"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. L.S.S. SANDBOXES (TIER 2: GOTHAM, KING_GHOST, PUMUCKL, BRUMMEL)
+# ═══════════════════════════════════════════════════════════════════════════════
 class GothamCitySandbox:
     """
     Die Gotham City Sandbox ist der Arkham-Cache für zerstörte Tokens.
@@ -554,6 +683,7 @@ class BrummelGrummelUniverse:
     """
     Das Brummel-Grummel-Universum.
     Ein isolierter Oszillator, der in einer Dreieckswelle mit Periode 18 schwingt.
+    Dient der Zustands-Simulation für containment_shield Events.
     """
     def __init__(self):
         self.entity_id = "[0003]"
@@ -582,62 +712,40 @@ class BrummelGrummelUniverse:
             "lineage_doctrine": f"{self.lineage}[LINEAGE] {self.doctrine}[DOCTRINE]",
             "dummelt_hash": generate_hash(f"DUMMELT_{hostile_payload}_{osc_state}", 16)
         }
+        logger.info(f"[BRUMMEL] Injektion verarbeitet. Oszillation: {osc_state}")
         return result
 
 
-class XJustizXoevGatekeeper:
-    """
-    Das XJustiz Gate.
-    Keine Halluzination ohne XML. Es konvertiert rohe Tokens in 
-    ein rechtssicheres Format (Nachrichtentyp 0300).
-    """
-    def __init__(self):
-        logger.info("XJustiz Gatekeeper initialisiert (Status: ERV_PIPELINE_ACTIVE).")
-
-    def validate_output(self, raw_token: str) -> str:
-        """Erzeugt ein valides XJustiz-XML aus einem Token."""
-        root = ET.Element(f"{XJ_NS}nachricht.straf.0300")
-        
-        # Kopf
-        kopf = ET.SubElement(root, f"{XJ_NS}nachrichtenkopf")
-        ET.SubElement(kopf, f"{XJ_NS}erstellungszeitpunkt").text = time.strftime("%Y-%m-%dT%H:%M:%S")
-        ET.SubElement(kopf, f"{XJ_NS}absender").text = "B6-Monster-API"
-        
-        # Fachdaten
-        fach = ET.SubElement(root, f"{XJ_NS}fachdaten")
-        ET.SubElement(fach, f"{XJ_NS}token").text = str(raw_token)
-        
-        return ET.tostring(root, encoding="unicode")
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 12: SOVEREIGN APEX CONTROLLER (DER DIRIGENT)
+# 12. SOVEREIGN APEX CONTROLLER (DER DIRIGENT)
 # ═══════════════════════════════════════════════════════════════════════════════
 class SovereignApexController:
     """
     Der Dirigent der Matrix.
     Fusioniert alle Layer (Sensorik, Biologie, Kognition, Generierung, Governance).
+    Dies ist das Gehirn, das entscheidet, was mit einem eingehenden Event passiert.
     """
     def __init__(self):
+        # Tier 3: Analysis
         self.sensor = NeuroScanModul()
+        self.wusulum = WusulumCore()
+        self.booster = DeepSeekBooster()
+        
+        # Tier 2: Security & Biology
         self.bio = PolyvagalStateRegulator()
         self.kortex = NeoKortikalerDirigent()
         self.diaboli = GrummelSignatureScanner()
-        
-        # Sandboxes
         self.gotham = GothamCitySandbox()
         self.king_ghost = King_GhostSandbox()
         self.pumuckl = PumucklChaosInjector()
         self.brummel = BrummelGrummelUniverse()
         
-        # Gates & Core
+        # Tier 1: Governance
         self.xjustiz = XJustizXoevGatekeeper()
-        self.wusulum = WusulumCore()
-        self.booster = DeepSeekBooster()
         
         logger.info("Sovereign Apex Controller initialisiert (Status: APEX_ONLINE).")
 
-    def process_event(self, text: str) -> Dict[str, Any]:
+    def process_event(self, text: str, is_threat_flag: bool = False) -> Dict[str, Any]:
         """
         Der Haupt-Zyklus. Nimmt Text entgegen, analysiert ihn 
         und entscheidet über Leben (Process) oder Tod (Contain).
@@ -649,6 +757,12 @@ class SovereignApexController:
         
         # 2. Forensik (Grummel-Scanner)
         is_hostile, core_hits, sub_hits = self.diaboli.scan(text)
+        
+        # Berücksichtige manuellen Override vom Button
+        if is_threat_flag:
+            is_hostile = True
+            core_hits.append("MANUAL_THREAT_FLAG")
+            
         threat_level = scan["sensory_threat_level"] + (0.3 if is_hostile else 0.0)
         
         # 3. Biologie (Polyvagal & Kortex)
@@ -663,6 +777,7 @@ class SovereignApexController:
             shadow_id = self.king_ghost.consume_to_shadow(text, "advocatus_kill")
             pumuckl_record = self.pumuckl.chaos_wrap(text)
             
+            # System beruhigen nach dem Angriff
             self.bio.co_regulate(0.2)
             
             return {
@@ -695,6 +810,8 @@ class SovereignApexController:
             "threat": threat_level
         })
         
+        logger.info(f"[APEX] Event erfolgreich verarbeitet: {executive_decision}")
+        
         return {
             "status": "PROCESSED",
             "threat_level": round(threat_level, 3),
@@ -710,12 +827,14 @@ class SovereignApexController:
 # Instanziierung des globalen Controllers
 apex_controller = SovereignApexController()
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 13: REGISTRY LOADER & LIFESPAN
+# 13. REGISTRY LOADER (HINTERGRUND-SYNC)
 # ═══════════════════════════════════════════════════════════════════════════════
 async def load_registry():
-    """Lädt die 201 Entitäten aus der GitHub-CSV in den globalen Speicher."""
+    """
+    Lädt die 201 Entitäten aus der GitHub-CSV in den globalen Speicher.
+    Wird beim Start der API und über den Admin-Endpoint aufgerufen.
+    """
     global BOOK_REGISTRY
     if not httpx:
         logger.error("httpx nicht installiert. Registry-Sync fehlgeschlagen.")
@@ -727,7 +846,10 @@ async def load_registry():
             response = await http_client.get(REGISTRY_URL)
             response.raise_for_status()
             
+            # Filtere Kommentare und leere Zeilen
             lines = [l for l in response.text.splitlines() if l.strip() and not l.startswith("#")]
+            
+            # Parse die CSV (Semikolon-getrennt)
             reader = csv.DictReader(io.StringIO("\n".join(lines)), delimiter=";")
             
             new_registry = {}
@@ -745,11 +867,17 @@ async def load_registry():
         logger.error(f"[CRITICAL] Registry-Sync fehlgeschlagen: {e}")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 14. FASTAPI LIFESPAN (STARTUP & SHUTDOWN)
+# ═══════════════════════════════════════════════════════════════════════════════
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startet und beendet die Hintergrundprozesse der API."""
+    """
+    Startet und beendet die Hintergrundprozesse der API.
+    Stellt sicher, dass der Registry-Sync asynchron läuft und beim Shutdown sauber beendet wird.
+    """
     logger.info("=" * 70)
-    logger.info("B6-MONSTER-API :: SYSTEM STARTUP")
+    logger.info("B6-MONSTER-API :: SYSTEM STARTUP (v∞)")
     logger.info(f"  Python:         {os.sys.version.split()[0]}")
     logger.info(f"  Seal:           {EXPECTED_SEAL[:10]}... (Länge: {len(EXPECTED_SEAL)})")
     logger.info(f"  Gemini:         {'READY' if client else 'DISABLED'}")
@@ -757,7 +885,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"  WAL-Ledger:     {WAL_PATH}")
     logger.info("=" * 70)
     
-    # Startet den Registry-Sync asynchron
+    # Startet den Registry-Sync asynchron (blockiert den Serverstart nicht)
     task = asyncio.create_task(load_registry())
     
     try:
@@ -766,19 +894,23 @@ async def lifespan(app: FastAPI):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
-        logger.info("B6-MONSTER-API :: SHUTDOWN COMPLETE")
+        logger.info("B6-MONSTER-API :: SHUTDOWN COMPLETE (Φ_LOCKED_ABSOLUTE)")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 14: FASTAPI INITIALISIERUNG & PYDANTIC MODELS
+# 15. FASTAPI INITIALISIERUNG & MIDDLEWARE
 # ═══════════════════════════════════════════════════════════════════════════════
 app = FastAPI(
     title="B6 Hyperkernel Monster API",
     version="∞",
-    description="Sovereign OS Backend mit L.S.S. Neuro-Core, Neo4j & WORM.",
-    lifespan=lifespan
+    description="Sovereign OS Backend mit L.S.S. Neuro-Core, Neo4j, WORM & DNA-Security.",
+    lifespan=lifespan,
+    docs_url="/api/docs",     # Isolierter Docs-Pfad (Security)
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json"
 )
 
+# CORS (Erlaubt dem Streamlit-Cockpit und Vercel-Frontends den Zugriff)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -787,34 +919,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Pydantic Models ---
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 16. PYDANTIC MODELS (REQUEST VALIDATION)
+# ═══════════════════════════════════════════════════════════════════════════════
 class BaseRequest(BaseModel):
+    """Basis-Modell mit optionalem Auth-Seal für alle Endpoints."""
     auth_seal: Optional[str] = None
 
 class PromptRequest(BaseRequest):
+    """Request für den Chat/RAG Endpoint."""
     prompt: str = Field(..., min_length=1, max_length=4000, description="Der Text oder die Frage an das System.")
 
 class ApexRequest(BaseRequest):
+    """Request für den Sovereign Apex Controller."""
     message: str = Field(..., min_length=1, max_length=4000, description="Der Event-Text für den Apex Controller.")
-    is_threat: bool = Field(default=False, description="Manuelle Markierung als Bedrohung.")
+    is_threat: bool = Field(default=False, description="Manuelle Markierung als Bedrohung (Defensive Starre).")
 
 class BrummelRequest(BaseRequest):
+    """Request für die Brummel-Sandbox."""
     message: str = Field(..., min_length=1, max_length=4000, description="Injektion für das Brummel-Universum.")
 
 class PumucklRequest(BaseRequest):
+    """Request für die Pumuckl-Chaos-Sandbox."""
     message: str = Field(..., min_length=1, max_length=4000, description="Chaos-Payload für Pumuckl.")
 
 class KingGhostRequest(BaseRequest):
+    """Request für die King_Ghost-Schatten-Konsumation."""
     message: str = Field(..., min_length=1, max_length=4000, description="Token für den King_Ghost Schatten-Pool.")
     origin: str = Field(default="external", description="Herkunft des Tokens.")
 
 class DeepSeekRequest(BaseRequest):
+    """Request für den DeepSeek Multi-Step Reasoning Booster."""
     prompt: str = Field(..., min_length=1, max_length=4000, description="Prompt für das DeepSeek Reasoning.")
     depth: int = Field(default=3, ge=1, le=5, description="Tiefe des Reasoning-Zyklus.")
-# ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 15: CORE & HEALTH ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
 
+class DNARequest(BaseRequest):
+    """Request für die DNA-Security Evaluierung."""
+    dna_expression: str = Field(..., description="DNA-Formel (z.B. 'G+C*(A-T)') oder DNA-Node (z.B. 'G-G-A-90')")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 17. CORE & HEALTH ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Core"])
 async def root():
     """
@@ -829,7 +976,6 @@ async def root():
         "worm_block": WORM_LEDGER["count"],
         "timestamp": time.time()
     }
-
 
 @app.get("/health", tags=["Core"])
 async def health():
@@ -851,10 +997,10 @@ async def health():
             "lss_neuro_core": "ONLINE",
             "king_ghost_sandbox": "ONLINE",
             "deepseek_booster": "ONLINE",
-            "xjustiz_gate": "ONLINE"
+            "xjustiz_gate": "ONLINE",
+            "dna_security": "ONLINE"
         }
     }
-
 
 @app.get("/stats", tags=["Core"])
 async def stats():
@@ -882,9 +1028,8 @@ async def stats():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 16: WAL & LEDGER ENDPOINTS
+# 18. WAL & LEDGER ENDPOINTS (AUDITING)
 # ═══════════════════════════════════════════════════════════════════════════════
-
 @app.get("/ledger/inspect", tags=["WORM"])
 async def ledger_inspect(limit: int = 20):
     """
@@ -900,7 +1045,6 @@ async def ledger_inspect(limit: int = 20):
         "blocks": blocks
     }
 
-
 @app.get("/api/v1/wal/tail", tags=["WORM"])
 async def wal_tail(n: int = 20):
     """
@@ -910,7 +1054,6 @@ async def wal_tail(n: int = 20):
     return {
         "blocks": wal.tail(n)
     }
-
 
 @app.post("/admin/reload-registry", tags=["Admin"])
 async def reload_registry(req: BaseRequest):
@@ -932,9 +1075,8 @@ async def reload_registry(req: BaseRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 17: PROMPT & RAG ENDPOINT (Gemini)
+# 19. PROMPT & RAG ENDPOINT (GEMINI)
 # ═══════════════════════════════════════════════════════════════════════════════
-
 @app.post("/prompt/check", tags=["Core"])
 async def check_prompt(req: PromptRequest):
     """
@@ -1000,9 +1142,8 @@ async def check_prompt(req: PromptRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 18: L.S.S. APEX & SANDBOX ENDPOINTS
+# 20. L.S.S. APEX & SANDBOX ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
-
 @app.post("/api/v1/apex/process", tags=["L.S.S. Apex"])
 async def apex_process(req: ApexRequest):
     """
@@ -1015,7 +1156,7 @@ async def apex_process(req: ApexRequest):
     logger.info("Apex-Event empfangen. Starte Verarbeitung...")
     
     # Ruft die zentrale Logik im Controller auf
-    result = apex_controller.process_event(req.message)
+    result = apex_controller.process_event(req.message, is_threat_flag=req.is_threat)
     
     # In den WAL schreiben (Persistenz)
     wal.append("APEX_EVENT", {
@@ -1097,9 +1238,8 @@ async def kingghost_list():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 19: DEEPSEEK & NEO4J ENDPOINTS
+# 21. DEEPSEEK, DNA-SECURITY & NEO4J ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
-
 @app.post("/api/v1/deepseek/boost", tags=["Analysis"])
 async def deepseek_boost(req: DeepSeekRequest):
     """
@@ -1113,6 +1253,32 @@ async def deepseek_boost(req: DeepSeekRequest):
     wal.append("DEEPSEEK_BOOST", {"confidence": result["confidence"]})
     
     return result
+
+
+@app.post("/api/v1/security/dna_eval", tags=["Security"])
+async def dna_eval_endpoint(req: DNARequest):
+    """
+    Wertet DNA-Formeln sicher aus (RCE-Schutz).
+    Prüft auf Brummel/Grummelt Muster.
+    """
+    if not verify_seal(req.auth_seal):
+        raise HTTPException(status_code=403, detail="Invalid Auth Seal")
+        
+    try:
+        result = safe_eval_dna(req.dna_expression)
+        return {
+            "status": "SECURE_EVAL_SUCCESS",
+            "expression": req.dna_expression,
+            "result": result,
+            "seal": "Φ_LOCKED_EX_TUNC"
+        }
+    except ValueError as e:
+        logger.warning(f"DNA SECURITY ALERT: {str(e)}")
+        wal.append("DNA_SECURITY_BLOCK", {"expression": req.dna_expression, "error": str(e)})
+        return JSONResponse(
+            status_code=400,
+            content={"status": "BLOCKED", "detail": str(e)}
+        )
 
 
 @app.post("/api/v1/graph/query", tags=["Graph"])
@@ -1141,9 +1307,8 @@ async def graph_query(req: PromptRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 20: LIVE TELEMETRY WEBSOCKET
+# 22. LIVE TELEMETRY WEBSOCKET
 # ═══════════════════════════════════════════════════════════════════════════════
-
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
     """
@@ -1177,9 +1342,8 @@ async def websocket_telemetry(websocket: WebSocket):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ABSCHNITT 21: GLOBAL EXCEPTION HANDLER & ENTRYPOINT
+# 23. GLOBAL EXCEPTION HANDLER (FAIL-CLOSED)
 # ═══════════════════════════════════════════════════════════════════════════════
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
@@ -1192,6 +1356,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"status": "ERROR", "detail": "Internal Server Error (Fail-Closed)"}
     )
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 24. ENTRYPOINT (UVICORN)
+# ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     # Startet den Uvicorn-Server (für lokale Tests oder Docker)
     port = int(os.getenv("PORT", 8000))
