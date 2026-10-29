@@ -1,0 +1,11 @@
+ID,Alter_Hash,Mnemonic_Key,Payload_Type,Payload_Code,TXT_Output,Farbcode,Ring,Postmortem_Hash
+E-001,850b2ef003f53db9,"Koenig_der_Liga",PYTHON,"def truth(): return 'Sovereign'","Der König ist der Ursprung. Buch 100 trägt die Wahrheit.",#FFD700,Ring 0,-
+E-002,a1b2c3d4e5f6g7h8,"Mettwurst_ist_tot",JSON,"{'status':'CONTAINED','inmate':'F-003'}","Grummel wurde von Gotham City verschluckt.",#FF0044,Ring 5,-
+E-003,9f8e7d6c5b4a3210,"Wusulum_im_Schatten",PYTHON,"import hashlib; print('Snuggles')","Dr. Snuggles wohnt in den Wänden der API.",#B800FF,Ring 2,-
+E-004,1234abcd5678ef90,"Biene_Maja_sticht",JSON,"{'agent':'BieneMaja','honeypot':True}","Der Lockvogel summt an der Oberfläche.",#00FF88,Ring 4,-
+E-005,aaaa1111bbbb2222,"Pumuckl_klaut_Token",PYTHON,"print('Pumuckl war hier')","Der Kobold hat Chaos hinterlassen.",#FF88FF,Ring 4,-
+E-006,cccc3333dddd4444,"King_Ghost_wacht",JSON,"{'shadow':'KG-XXX','origin':'api'}","Der Schattenkönig ist tiefer als Gotham.",#FF0000,Ring 5,-
+E-007,eeee5555ffff6666,"Foucault_invertiert",PYTHON,"print('SYS_CONFORM')","Was abweicht, wird in Ordnung gezwungen.",#00E5FF,Ring 1,-
+E-008,7777aaaa8888bbbb,"Polyvagal_Decay",JSON,"{'stress':0.0,'decay':0.08}","Das System atmet. Es beruhigt sich.",#00FF00,Ring 3,-
+E-009,9999cccc0000dddd,"XJustiz_siegelt",PYTHON,"print('<XJustiz>OK</XJustiz>')","Nur XML ist die Wahrheit.",#D4AF37,Ring 1,-
+E-010,1111eeee2222ffff,"Apex_Override",JSON,"{'operator':'THOMAS','status':'ROOT'}","Der Mensch hat das letzte Wort.",#FFD700,Ring 0,-
