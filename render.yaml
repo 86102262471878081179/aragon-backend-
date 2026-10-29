@@ -1,0 +1,25 @@
+# Exported from Render on 2026-10-29T00:11:03Z
+version: "1"
+projects:
+- name: My project
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: aragon-backend-api
+      runtime: python
+      repo: https://github.com/86102262471878081179/aragon-backend-
+      plan: 0.5c-512mb
+      envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: EXPECTED_SEAL
+        value: "Φ_SOVEREIGN_ROOT_SEAL_EX_TUNC"   # <-- DAS IST WICHTIG!
+      - key: MASTER_SEAL
+        value: "850b2ef003f53db90f704b16e54869fc6ba6265eae13aafde9046fe0e4d99dab"
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      region: frankfurt
+      buildCommand: pip install -r requirements.txt
+      startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+      autoDeployTrigger: commit
