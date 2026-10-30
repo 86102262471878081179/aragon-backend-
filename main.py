@@ -51,7 +51,7 @@ import logging
 import asyncio
 import threading
 import xml.etree.ElementTree as ET
-from collections import deque
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
