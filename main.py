@@ -644,19 +644,20 @@ class NeoKortikalerDirigent:
 # ═══════════════════════════════════════════════════════════════════════════════
 # ABSCHNITT 13: DEEPSEEK BOOSTER
 # ═══════════════════════════════════════════════════════════════════════════════
-import copy
-
-
 class DeepSeekBooster:
     """
-    Reasoning-Layer inspiriert von DeepSeek-R1.
-    Cache-Key berücksichtigt sämtliche übergebenen Ergebnisparameter.
+    Lokaler Reasoning-Simulator mit begrenztem, thread-sicherem LRU-Cache.
+
+    Sämtliche übergebenen Parameter fließen in den Cache-Key ein.
+    Cache-Werte werden beim Speichern und Zurückgeben tief kopiert.
     """
 
     STEPS = ["decompose", "expand", "verify", "confidence"]
+    MAX_CACHE_ENTRIES = 512
 
     def __init__(self):
-        self.cache: Dict[str, Dict[str, Any]] = {}
+        self.cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._cache_lock = threading.RLock()
 
     @staticmethod
     def _cache_key(
@@ -671,16 +672,18 @@ class DeepSeekBooster:
             "depth": depth,
             **options,
         }
+
         try:
             return json.dumps(
                 key_data,
                 sort_keys=True,
                 ensure_ascii=False,
                 separators=(",", ":"),
+                allow_nan=False,
             )
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"Cache-Parameter müssen JSON-serialisierbar sein: {exc}"
+                f"Cache-Parameter müssen gültige JSON-Werte sein: {exc}"
             ) from exc
 
     def boost(
@@ -688,12 +691,51 @@ class DeepSeekBooster:
         prompt: str,
         context: str = "",
         depth: int = 3,
-        **options: Any,
+        *,
+        language: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        system_prompt: Optional[str] = None,
+        response_format: Any = None,
+        entropy: Optional[float] = None,
+        apply_veto: bool = False,
     ) -> Dict[str, Any]:
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("prompt muss ein nichtleerer String sein.")
+        if not isinstance(context, str):
+            raise ValueError("context muss ein String sein.")
+        if isinstance(depth, bool) or not isinstance(depth, int) or not 1 <= depth <= 10:
+            raise ValueError("depth muss eine ganze Zahl zwischen 1 und 10 sein.")
+        if max_tokens is not None and (
+            isinstance(max_tokens, bool)
+            or not isinstance(max_tokens, int)
+            or max_tokens < 1
+        ):
+            raise ValueError("max_tokens muss eine positive ganze Zahl sein.")
+        if entropy is not None:
+            if isinstance(entropy, bool) or not isinstance(entropy, (int, float)):
+                raise ValueError("entropy muss eine endliche Zahl sein.")
+            if not math.isfinite(entropy):
+                raise ValueError("entropy muss eine endliche Zahl sein.")
+        if not isinstance(apply_veto, bool):
+            raise ValueError("apply_veto muss boolesch sein.")
+
+        options = {
+            "language": language,
+            "model": model,
+            "max_tokens": max_tokens,
+            "system_prompt": system_prompt,
+            "response_format": response_format,
+            "entropy": entropy,
+            "apply_veto": apply_veto,
+        }
         key = self._cache_key(prompt, context, depth, options)
 
-        if key in self.cache:
-            return copy.deepcopy(self.cache[key])
+        with self._cache_lock:
+            cached = self.cache.get(key)
+            if cached is not None:
+                self.cache.move_to_end(key)
+                return copy.deepcopy(cached)
 
         trace: List[Dict[str, Any]] = []
         for i in range(depth):
@@ -702,13 +744,12 @@ class DeepSeekBooster:
                 "step": i + 1,
                 "name": self.STEPS[min(i, len(self.STEPS) - 1)],
                 "hash": step_hash,
-                "note": self._step_note(i, prompt),
+                "note": self._step_note(i),
             })
 
         verification_hash = hashlib.sha3_512(
-            json.dumps(trace, sort_keys=True).encode()
+            json.dumps(trace, sort_keys=True).encode("utf-8")
         ).hexdigest()
-
         confidence = int(_h(verification_hash, 2), 16) / 65535.0
 
         result = {
@@ -718,13 +759,28 @@ class DeepSeekBooster:
             "verification_hash": verification_hash[:32],
             "confidence": round(confidence, 3),
             "depth": depth,
-            "verdict": "HIGH_CONFIDENCE" if confidence > 0.7 else "REVIEW_NEEDED",
+            "verdict": (
+                "HIGH_CONFIDENCE" if confidence > 0.7 else "REVIEW_NEEDED"
+            ),
+            "parameters": copy.deepcopy(options),
         }
 
-        self.cache[key] = copy.deepcopy(result)
+        with self._cache_lock:
+            # Ein paralleler Request könnte den Eintrag bereits angelegt haben.
+            existing = self.cache.get(key)
+            if existing is not None:
+                self.cache.move_to_end(key)
+                return copy.deepcopy(existing)
+
+            self.cache[key] = copy.deepcopy(result)
+            self.cache.move_to_end(key)
+
+            while len(self.cache) > self.MAX_CACHE_ENTRIES:
+                self.cache.popitem(last=False)
+
         return copy.deepcopy(result)
 
-    def _step_note(self, idx: int, prompt: str) -> str:
+    def _step_note(self, idx: int) -> str:
         notes = [
             "Dekomposition: Teile Problem in atomare Sub-Fragen.",
             "Expansion: Generiere Kandidaten-Antworten aus 10-Ohren-Sicht.",
@@ -1474,8 +1530,17 @@ class KingGhostRequest(BaseRequest):
 
 class DeepSeekRequest(BaseRequest):
     prompt: str = Field(..., min_length=1, max_length=4000)
-    context: str = ""
-    depth: int = 3
+    context: str = Field(default="", max_length=12000)
+    depth: int = Field(default=3, ge=1, le=10)
+
+    language: Optional[str] = Field(default=None, max_length=32)
+    model: Optional[str] = Field(default=None, max_length=128)
+    max_tokens: Optional[int] = Field(default=None, ge=1)
+    system_prompt: Optional[str] = Field(default=None, max_length=12000)
+    response_format: Any = None
+
+    entropy: Optional[float] = Field(default=None, allow_inf_nan=False)
+    apply_veto: bool = False
 
 
 class DNARequest(BaseRequest):
@@ -1748,8 +1813,31 @@ async def kingghost_list():
 async def deepseek_boost(request: DeepSeekRequest):
     if not _verify_seal(request.auth_seal):
         return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
-    result = _apex.booster.boost(request.prompt, request.context, depth=request.depth)
-    _wal.append("DEEPSEEK_BOOST", {"confidence": result["confidence"]})
+
+    try:
+        result = _apex.booster.boost(
+            prompt=request.prompt,
+            context=request.context,
+            depth=request.depth,
+            language=request.language,
+            model=request.model,
+            max_tokens=request.max_tokens,
+            system_prompt=request.system_prompt,
+            response_format=request.response_format,
+            entropy=request.entropy,
+            apply_veto=request.apply_veto,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    _wal.append(
+        "DEEPSEEK_BOOST",
+        {
+            "confidence": result["confidence"],
+            "depth": request.depth,
+            "model": request.model,
+        },
+    )
     return result
 
 
