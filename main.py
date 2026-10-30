@@ -1696,18 +1696,25 @@ async def check_prompt(request: PromptRequest):
             rag_context += f"Eselsbrücke {bruecke.id}: {bruecke.mnemonic} → {bruecke.txt_output}\n"
             matched_eselsbruecken.append(bruecke.id)
 
-    # Gemini-Antwort
-    ai_answer = "Keine KI-Antwort generiert."
-    if client and rag_context:
-        try:
-            response = await client.aio.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=f"Daten: {rag_context}\nFrage: {prompt}",
-            )
-            ai_answer = response.text
-        except Exception as e:
-            ai_answer = f"System-Fehler: {e}"
-            logger.warning(f"Gemini-Call fehlgeschlagen: {e}")
+#Gemini Antwort
+ai_answer = "Keine KI-Antwort generiert."
+
+if client and rag_context:
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=f"Daten:\n{rag_context}\n\nFrage:\n{prompt}",
+        )
+
+        text = getattr(response, "text", None)
+        if isinstance(text, str) and text.strip():
+            ai_answer = text.strip()
+        else:
+            ai_answer = "Gemini hat keine auswertbare Textantwort zurückgegeben."
+
+    except Exception:
+        logger.exception("Gemini-Aufruf fehlgeschlagen")
+        ai_answer = "Die KI-Antwort konnte wegen eines Systemfehlers nicht erstellt werden."
 
     # WORM-Update
     timestamp = str(time.time())
