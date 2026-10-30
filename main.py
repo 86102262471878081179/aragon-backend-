@@ -1748,6 +1748,28 @@ async def apex_process(request: ApexRequest):
     if not _verify_seal(request.auth_seal):
         return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
 
+ @app.post("/api/v1/deepseek/boost", tags=["Analysis"])
+async def deepseek_boost(request: DeepSeekRequest):
+    if not _verify_seal(request.auth_seal):
+        return {"status": "403_FORBIDDEN", "detail": "Invalid Seal"}
+
+    try:
+        result = _apex.booster.boost(
+            prompt=request.prompt,
+            context=request.context,
+            depth=request.depth,
+            language=request.language,
+            model=request.model,
+            max_tokens=request.max_tokens,
+            system_prompt=request.system_prompt,
+            response_format=request.response_format,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    _wal.append("DEEPSEEK_BOOST", {"confidence": result["confidence"]})
+    return result
+ 
     result = _apex.process_event(request.message, is_threat_flag=request.is_threat)
     _wal.append("APEX_EVENT", {"input": request.message, "result": result})
 
