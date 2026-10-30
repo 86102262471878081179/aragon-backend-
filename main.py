@@ -1702,6 +1702,7 @@ async def check_prompt(request: PromptRequest):
             )
             matched_eselsbruecken.append(bruecke.id)
 
+    #Gemini Antwort
     ai_answer = "Keine KI-Antwort generiert."
 
     if client and rag_context:
@@ -1756,64 +1757,6 @@ async def check_prompt(request: PromptRequest):
         "worm": {"hash": worm_hash, "block": current_block},
         "ai_answer": ai_answer,
     }
-
-    # Eselsbrücken-Suche
-    matched_eselsbruecken = []
-    for hash_prefix, bruecke in _eselsbruecken.bruecken.items():
-        if hash_prefix[:8] in prompt or bruecke.mnemonic.lower() in lowered:
-            rag_context += f"Eselsbrücke {bruecke.id}: {bruecke.mnemonic} → {bruecke.txt_output}\n"
-            matched_eselsbruecken.append(bruecke.id)
-
-#Gemini Antwort
-ai_answer = "Keine KI-Antwort generiert."
-
-if client and rag_context:
-    try:
-        response = await client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"Daten:\n{rag_context}\n\nFrage:\n{prompt}",
-        )
-
-        text = getattr(response, "text", None)
-        if isinstance(text, str) and text.strip():
-            ai_answer = text.strip()
-        else:
-            ai_answer = "Gemini hat keine auswertbare Textantwort zurückgegeben."
-
-    except Exception:
-        logger.exception("Gemini-Aufruf fehlgeschlagen")
-        ai_answer = "Die KI-Antwort konnte wegen eines Systemfehlers nicht erstellt werden."
-
-    # WORM-Update
-    timestamp = str(time.time())
-    async with _LEDGER_LOCK:
-        worm_hash = hashlib.sha3_512(
-            f"{WORM_LEDGER['last_hash']}{prompt}{timestamp}".encode()
-        ).hexdigest()
-        WORM_LEDGER["last_hash"] = worm_hash
-        WORM_LEDGER["count"] = int(WORM_LEDGER["count"]) + 1
-        current_block = int(WORM_LEDGER["count"])
-        WORM_RING.append({
-            "block": current_block,
-            "hash": worm_hash,
-            "prompt_hash": hashlib.sha3_512(prompt.encode()).hexdigest()[:32],
-            "matched": matched_entities,
-            "eselsbruecken": matched_eselsbruecken,
-            "timestamp": timestamp,
-        })
-
-    return {
-        "status": "200_OK_ALLOW",
-        "data": {
-            "ai_answer": ai_answer,
-            "rag_used": bool(rag_context),
-            "entities_matched": matched_entities,
-            "eselsbruecken_matched": matched_eselsbruecken,
-        },
-        "worm": {"hash": worm_hash, "block": current_block},
-        "ai_answer": ai_answer,
-    }
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ABSCHNITT 27: L.S.S. APEX ENDPOINTS
